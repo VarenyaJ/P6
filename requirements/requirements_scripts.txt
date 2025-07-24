@@ -1,0 +1,4 @@
+click==8.2.1
+GitPython==3.1.44
+requests==2.32.4
+biopython==1.85

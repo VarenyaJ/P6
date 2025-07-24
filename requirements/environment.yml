@@ -12,4 +12,4 @@ dependencies:
       - -r requirements.txt         # core LLM & converter libraries (ollama, llama-index, docling)
       - -r requirements_scripts.txt # CLI helpers like click
       - -r requirements_test.txt    # testing & formatting (pytest, black)
-      - -e ..                        # install the package in editable mode
+      #- -e .                        # install the package in editable mode

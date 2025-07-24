@@ -48,20 +48,19 @@ conda deactivate
 conda env remove -n p6 -y
 
 # 3. Create new env
-conda env create -f requirements/environment.yml -n p6 -y || mamba env create -f requirements/environment.yml -n p6
+conda env create -f requirements/environment.yml -n p6 -y || mamba env create -f requirements/environment.yml -n p6 -y
 
-# 4. Validate smoke test
+# 4. TODO: Validate packages work with a little test
 conda activate p6
 python - <<EOF
-import docling, selenium
-print("OK:", type(docling), selenium.__version__)
+import phenopackets, hpo-toolkit, pandas
+print("OK:", phenopackets.__version__, hpo-toolkit.__version__, pandas.__version__)
 EOF
 
-# 4.5 Install and Verify Package
+# 4.5 TODO: Install and Verify Package
 pip install -e .
-python -c "import P6; print(P6.__version__)"
-pull-git-files --help
-create-pmid-pkl --help
+python -c "import p6; print(p6.__version__)"
+sample --help
 
 pytest --maxfail=1 -q
 ```

@@ -26,6 +26,8 @@ exclude = [
     "node_modules",
     "site-packages",
     "venv",
+    "src/P6/sample.py",
+    "tests/test_sample.py",
 ]
 
 # Same as Black.

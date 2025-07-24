@@ -1,0 +1,45 @@
+[build-system]
+# setuptools builds the package; wheel lets pip build a .whl for faster installs
+requires = ["setuptools>=65.6.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name                 =   "P6"
+# version could be read from src/P6/__init__.py's __version__ attribute
+# version            = { attr = "P6.__version__" }
+description          = "Varenya's work for Tony @ NSW"
+readme               = "README.md"
+requires-python      = ">=3.13"   # lock to Python 3.13 as per the Conda environment
+license              = { file = "LICENSE" }
+authors              = [{ name = "Varenya Jain", email = "varenyajj@gmail.com" }]
+classifiers          = [
+   "Programming Language :: Python :: 3.13",
+   "License :: OSI Approved :: MIT License",
+   "Operating System :: OS Independent",
+]
+keywords             = ["Global Alliance for Genomics and Health", "GA4GH", "Phenopacket", "GA4GH Phenopacket Schema", "Human Phenotype Ontology", "HPO", "Prenatal", "Fetal Sequencing Consortium"]
+
+# version in __init__
+dynamic = ["version", "dependencies"]
+
+# Console-script entry-points to expose all the click commands
+[project.scripts]
+Ω              = "P6.scripts.Ω:Ω"   # Placeholder
+
+[project.urls]
+homepage                    = "https://github.com/VarenyaJ/P6"
+repository                  = "https://github.com/VarenyaJ/P6.git"
+documentation               = "https://github.com/VarenyaJ/P6.git"
+bugtracker                  = "https://github.com/VarenyaJ/P6/issues"
+
+[tool.setuptools]
+# all the code lives under src/, with a P6/ package
+package-dir = { "" = "src" }
+# packages    = ["P6", "P6.scripts"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+
+# Omit the [project.dependencies] section entirely to leave all dependency management to Conda.

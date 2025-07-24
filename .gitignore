@@ -205,3 +205,5 @@ cython_debug/
 scripts/data/*.DS_Store
 scripts/.DS_Store
 /.idea/vcs.xml
+/.idea/workspace.xml
+/.idea/misc.xml

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+      id-token: write
+      contents: read
+
+env:
+    PYTEST_ADDOPTS: "--color=yes"
+
+jobs:
+  test:
+    name: Test
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Check out Repo
+      uses: actions/checkout@v4
+      with:
+       fetch-depth: 0
+
+    - name: Setup Env
+      uses: ./.github/actions/setup_env
+
+    - name: Test with pytest
+      id: tests
+      run: |
+        pytest --disable-warnings ./
+
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    -   name: Check out Repo
+        uses: actions/checkout@v4
+        with:
+            fetch-depth: 0
+
+    -   name: Setup Env
+        uses: ./.github/actions/setup_env
+
+    -   name: Black Formatting - src
+        run: black ./src/p5_pdf_parser --check --skip-magic-trailing-comma
+
+    - name: Black Formatting - scripts
+      run:  black ./scripts --check --skip-magic-trailing-comma
+
+    - name: Black Formatting - tests
+      run:  black ./tests --check --skip-magic-trailing-comma
+
+    - name: Ruff Linting
+      run: ruff check
+
+    - name: Ruff Formatting
+      run: ruff format --check

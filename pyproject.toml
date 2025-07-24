@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 name                 =   "P6"
 # version could be read from src/P6/__init__.py's __version__ attribute
 # version            = { attr = "P6.__version__" }
-description          = "Varenya's work for Tony @ NSW"
+description          = "A tooklit for working with the `PreGen` repository at the University of New South Wales under Dr. Tony Roscioli"
 readme               = "README.md"
 requires-python      = ">=3.13"   # lock to Python 3.13 as per the Conda environment
 license              = { file = "LICENSE" }

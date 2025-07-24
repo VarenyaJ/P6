@@ -14,7 +14,7 @@ runs:
             id: env-cache
             with:
                 path: ${{ env.pythonLocation }}
-                key: ${{ hashFiles('./requirements/requirements.txt') }}-${{ hashFiles('./requirements/requirements_scripts.txt') }}-${{ hashFiles('./requirements/requirements_test.txt') }} }}
+                key: ${{ hashFiles('./requirements/requirements.txt') }}-${{ hashFiles('./requirements/requirements_scripts.txt') }}-${{ hashFiles('./requirements/requirements_test.txt') }}
 
         -   name: Install Dependencies
             if: ${{ steps.env-cache.outputs.cache-hit != 'true' }}

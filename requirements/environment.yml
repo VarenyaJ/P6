@@ -1,0 +1,15 @@
+name: p5
+channels:
+ - conda-forge                      # priority channel for up-to-date, cross-compiled packages (biopython, selenium, and other packages we might need)
+ - defaults                         # fallback to packages from default channel
+
+dependencies:
+  - python=3.13                     # lock to the exact interpreter version
+  - pip                             # to ensure pip itself is installed
+
+  # Pip‐only dependencies — must be indented under 'pip:' (no leading dash)
+  - pip:
+      - -r requirements.txt         # core LLM & converter libraries (ollama, llama-index, docling)
+      - -r requirements_scripts.txt # CLI helpers like click
+      - -r requirements_test.txt    # testing & formatting (pytest, black)
+      - -e ..                        # install the package in editable mode

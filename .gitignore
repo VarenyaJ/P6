@@ -204,3 +204,4 @@ cython_debug/
 /dataSources.local.xml
 scripts/data/*.DS_Store
 scripts/.DS_Store
+/.idea/vcs.xml

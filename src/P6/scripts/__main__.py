@@ -57,6 +57,21 @@ PHENOTYPE_KEY_COLUMNS = {
     "status",
 }
 
+# Map raw zygosity abbreviations to allowed dataclass zygosity values
+ZYGOSITY_MAP = {
+    "het":     "heterozygous",
+    "hom":     "homozygous",
+    "comphet": "compound_heterozygosity",
+    "hemi":    "hemizygous",
+    "mosaic":  "mosaic",
+}
+
+# Map raw inheritance abbreviations to allowed dataclass inheritance values
+INHERITANCE_MAP = {
+    "unknown": "unknown",
+    "inherited": "inherited",
+    "denovo":    "de_novo_mutation",
+}
 
 def load_sheets_as_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
     """
@@ -162,25 +177,37 @@ def parse_excel(excel_file: str):
                     sys.exit(1)
 
         if is_genotype_sheet:
-            for row_index, row_data in working.iterrows():
-                genotype_records.append(Genotype(
-                    genotype_patient_ID=str(row_data["genotype_patient_ID"]),
-                    contact_email=row_data["contact_email"],
-                    phasing=bool(row_data["phasing"]),
-                    chromosome=row_data["chromosome"],
-                    start_position=int(row_data["start_position"]),
-                    end_position=int(row_data["end_position"]),
-                    reference=row_data["reference"],
-                    alternate=row_data["alternate"],
-                    gene_symbol=row_data["gene_symbol"],
-                    hgvsg=row_data["hgvsg"],
-                    hgvsc=row_data["hgvsc"],
-                    hgvsp=row_data["hgvsp"],
-                    zygosity=row_data["zygosity"],
-                    inheritance=row_data["inheritance"],
-                ))
+            for _, row_data in working.iterrows():
+                # handle slash‑separated zygosity and inheritance
+                zyg_list = [z.strip().lower() for z in str(row_data["zygosity"]).split("/")]
+                inh_list = [i.strip().lower() for i in str(row_data["inheritance"]).split("/")]
+
+                for z_code, i_code in zip(zyg_list, inh_list):
+                    if z_code not in ZYGOSITY_MAP:
+                        click.echo(f"❌ Sheet {sheet_name!r}: Unrecognized zygosity code {z_code!r}", err=True)
+                        sys.exit(1)
+                    if i_code not in INHERITANCE_MAP:
+                        click.echo(f"❌ Sheet {sheet_name!r}: Unrecognized inheritance code {i_code!r}", err=True)
+                        sys.exit(1)
+
+                    genotype_records.append(Genotype(
+                        genotype_patient_ID=str(row_data["genotype_patient_ID"]),
+                        contact_email=row_data["contact_email"],
+                        phasing=bool(row_data["phasing"]),
+                        chromosome=row_data["chromosome"],
+                        start_position=int(row_data["start_position"]),
+                        end_position=int(row_data["end_position"]),
+                        reference=row_data["reference"],
+                        alternate=row_data["alternate"],
+                        gene_symbol=row_data["gene_symbol"],
+                        hgvsg=row_data["hgvsg"],
+                        hgvsc=row_data["hgvsc"],
+                        hgvsp=row_data["hgvsp"],
+                        zygosity=ZYGOSITY_MAP[z_code],
+                        inheritance=INHERITANCE_MAP[i_code],
+                    ))
         else:
-            for row_index, row_data in working.iterrows():
+            for _, row_data in working.iterrows():
                 phenotype_records.append(Phenotype(
                     phenotype_patient_ID=str(row_data["phenotype_patient_ID"]),
                     HPO_ID=row_data["hpo_id"],

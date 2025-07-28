@@ -1,52 +1,60 @@
 name: CI
 
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches:
+      - main
+  pull_request:
 
 permissions:
-      id-token: write
-      contents: read
+  id-token: write
+  contents: read
 
 env:
-    PYTEST_ADDOPTS: "--color=yes"
+  PYTEST_ADDOPTS: "--color=yes"
 
 jobs:
   test:
     name: Test
-    timeout-minutes: 15
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
+      - name: Check out Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Check out Repo
-      uses: actions/checkout@v4
-      with:
-       fetch-depth: 0
+      - name: Setup Env
+        uses: ./.github/actions/setup_env
 
-    - name: Setup Env
-      uses: ./.github/actions/setup_env
+      - name: Install P6 package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[test]
 
-    - name: Test with pytest
-      id: tests
-      run: |
-        pytest --disable-warnings ./
+      - name: Test with pytest
+        run: pytest ./
 
   formatting:
     name: Formatting
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-    -   name: Check out Repo
+      - name: Check out Repo
         uses: actions/checkout@v4
         with:
-            fetch-depth: 0
+          fetch-depth: 0
 
-    -   name: Setup Env
+      - name: Setup Env
         uses: ./.github/actions/setup_env
 
-    - name: Ruff Linting
-      run: ruff check .
+      - name: Install P6 package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[test]
 
-    - name: Ruff Formatting
-      run: ruff format .
+      - name: Ruff Linting
+        run: ruff check .
+
+      - name: Ruff Auto‑format
+        run: ruff format .

@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
-Command‑line interface for P6 toolkit.
-Now determines sheet type by presence of multiple required key columns.
+P6 CLI: parse one or more genomic/phenotypic Excel workbooks into objects,
+with optional verbose logging and timestamped logfile output.
 """
 
 import sys
+import logging
 import click
 import pandas as pd
 from P6.genotype import Genotype
 from P6.phenotype import Phenotype
 
-# Columns that need renaming → target dataclass fields
+# --- Constants --------------------------------------------------------------
+
 RENAME_MAP = {
     # genotype columns
     "ref":       "reference",
@@ -19,13 +21,11 @@ RENAME_MAP = {
     "start":     "start_position",
     "end":       "end_position",
     "chrom":     "chromosome",
-
     # phenotype columns
     "hpo":       "hpo_id",
     "timestamp": "date_of_observation",
 }
 
-# For any renamed field, the two neighbors it must sit between
 EXPECTED_COLUMN_NEIGHBORS = {
     "start_position": ("chromosome", "end_position"),
     "end_position":   ("start_position", "reference"),
@@ -34,7 +34,6 @@ EXPECTED_COLUMN_NEIGHBORS = {
     "gene_symbol":    ("alternate", "hgvsg"),
 }
 
-# Minimal required columns (after renaming) to identify each sheet type
 GENOTYPE_KEY_COLUMNS = {
     "contact_email",
     "phasing",
@@ -57,7 +56,6 @@ PHENOTYPE_KEY_COLUMNS = {
     "status",
 }
 
-# Map raw zygosity abbreviations to allowed dataclass zygosity values
 ZYGOSITY_MAP = {
     "het":     "heterozygous",
     "hom":     "homozygous",
@@ -66,7 +64,6 @@ ZYGOSITY_MAP = {
     "mosaic":  "mosaic",
 }
 
-# Map raw inheritance abbreviations to allowed dataclass inheritance values
 INHERITANCE_MAP = {
     "unknown":   "unknown",
     "inherited": "inherited",
@@ -76,14 +73,10 @@ INHERITANCE_MAP = {
 
 def load_sheets_as_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
     """
-    Read each worksheet into a DataFrame:
-      - first row = header
-      - first column = index
-      - normalize all headers to snake_case lowercase
-      - apply renames from RENAME_MAP
+    Load each sheet into a DataFrame, normalize headers and apply RENAME_MAP.
     """
     excel = pd.ExcelFile(workbook_path, engine="openpyxl")
-    tables: dict[str, pd.DataFrame] = {}
+    sheet_tables: dict[str, pd.DataFrame] = {}
 
     for sheet_name in excel.sheet_names:
         df = pd.read_excel(
@@ -93,145 +86,168 @@ def load_sheets_as_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
             index_col=0,
             engine="openpyxl",
         )
-
-        # CLEAN & NORMALIZE headers:
         df.columns = (
             df.columns
               .str.strip()
-              .str.replace(r"\s*\(.*?\)", "", regex=True)  # drop any "(…)"
-              .str.replace(r"\s+", "_",    regex=True)    # spaces → underscore
-              .str.replace(":",         "",    regex=False)  # drop colons
+              .str.replace(r"\s*\(.*?\)", "", regex=True)
+              .str.replace(r"\s+", "_",          regex=True)
+              .str.replace(":",           "",   regex=False)
               .str.lower()
         )
-
-        # apply specific renames (e.g. "ref" → "reference")
         df = df.rename(
-            columns={orig: target for orig, target in RENAME_MAP.items() if orig in df.columns}
+            columns={orig: new for orig, new in RENAME_MAP.items() if orig in df.columns}
         )
+        sheet_tables[sheet_name] = df
 
-        tables[sheet_name] = df
-
-    return tables
+    return sheet_tables
 
 
 def verify_column_order(df: pd.DataFrame, field: str) -> None:
     """
-    Ensure `field` sits between its expected neighbors.
+    Ensure that `field` appears directly between its expected neighbors.
     """
     before, after = EXPECTED_COLUMN_NEIGHBORS[field]
     cols = list(df.columns)
     idx = cols.index(field)
     if idx == 0 or idx == len(cols) - 1:
-        raise ValueError(f"Field {field!r} at column index {idx} cannot satisfy neighbor check.")
+        raise ValueError(f"Field {field!r} at index {idx} cannot satisfy neighbor check")
     if cols[idx - 1] != before or cols[idx + 1] != after:
         raise ValueError(
-            f"Field {field!r} should be between {before!r} and {after!r}, "
-            f"found neighbors {cols[idx - 1]!r} and {cols[idx + 1]!r}."
+            f"Field {field!r} should sit between {before!r} and {after!r}, "
+            f"found {cols[idx-1]!r} / {cols[idx+1]!r}"
         )
 
 
 @click.group()
 def main():
-    """P6 CLI: parse genomic & phenotypic sheets into typed Python objects."""
+    """Entry point for the P6 CLI."""
     pass
 
 
 @main.command(name="parse-excel")
-@click.argument("excel_file", type=click.Path(exists=True))
-def parse_excel(excel_file: str):
+@click.argument(
+    "workbook_paths",
+    nargs=-1,
+    type=click.Path(exists=True, dir_okay=False),
+)
+@click.option(
+    "--verbose-logging",
+    is_flag=True,
+    help="Also emit debug logs to stderr",
+)
+@click.option(
+    "--log-file-path",
+    type=click.Path(dir_okay=False, writable=True),
+    help="Append timestamped logs to this file",
+)
+def parse_excel(
+    workbook_paths: tuple[str, ...],
+    verbose_logging: bool,
+    log_file_path: str,
+):
     """
-    Read each sheet, check column order, then:
-      - Identify as a Genotype sheet if ALL GENOTYPE_KEY_COLUMNS are present.
-      - Identify as a Phenotype sheet if ALL PHENOTYPE_KEY_COLUMNS are present.
-      - Otherwise skip.
-    Instantiate objects accordingly.
+    Parse one or more Excel workbooks; classify each sheet as GENOTYPE or PHENOTYPE,
+    instantiate the corresponding objects, and summarize counts.
     """
-    all_sheets = load_sheets_as_tables(excel_file)
-    genotype_records = []
-    phenotype_records = []
+    if not workbook_paths:
+        click.echo("❌  No input files specified.", err=True)
+        sys.exit(1)
 
-    for sheet_name, df in all_sheets.items():
-        columns = set(df.columns)
-        is_genotype_sheet = GENOTYPE_KEY_COLUMNS.issubset(columns)
-        is_phenotype_sheet = PHENOTYPE_KEY_COLUMNS.issubset(columns)
+    # — configure logging —
+    handlers: list[logging.Handler] = []
+    if log_file_path:
+        handlers.append(logging.FileHandler(log_file_path, mode="a", encoding="utf-8"))
+    if verbose_logging:
+        handlers.append(logging.StreamHandler(sys.stderr))
+    if handlers:
+        logging.basicConfig(
+            level=logging.DEBUG if verbose_logging else logging.INFO,
+            format="%(asctime)s %(levelname)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            handlers=handlers,
+        )
 
-        if is_genotype_sheet == is_phenotype_sheet:
-            click.echo(
-                f"⚠  Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype",
-                err=True,
-            )
+    for workbook_path in workbook_paths:
+        logging.info(f"Beginning parse of '{workbook_path}'")
+        try:
+            sheet_tables = load_sheets_as_tables(workbook_path)
+        except Exception as e:
+            logging.error(f"Failed to read '{workbook_path}': {e}")
             continue
 
-        # rename the former-index column (whatever its original header was)
-        id_column = "genotype_patient_ID" if is_genotype_sheet else "phenotype_patient_ID"
-        working = df.reset_index()
-        original_index_col = working.columns[0]
-        working = working.rename(columns={original_index_col: id_column})
+        logging.debug(f"Loaded sheets: {list(sheet_tables.keys())}")
+        count_genotype_records = 0
+        count_phenotype_records = 0
 
-        # Verify ordering of any renamed columns
-        for field in EXPECTED_COLUMN_NEIGHBORS:
-            if field in working.columns:
-                try:
-                    verify_column_order(working, field)
-                except ValueError as e:
-                    click.echo(f"❌ Sheet {sheet_name!r}: {e}", err=True)
-                    sys.exit(1)
+        for sheet_name, sheet_df in sheet_tables.items():
+            cols = set(sheet_df.columns)
+            is_genotype = GENOTYPE_KEY_COLUMNS.issubset(cols)
+            is_phenotype = PHENOTYPE_KEY_COLUMNS.issubset(cols)
 
-        if is_genotype_sheet:
-            for _, row in working.iterrows():
-                # handle slash‑separated zygosity and inheritance
-                zyg_list = [z.strip().lower() for z in str(row["zygosity"]).split("/")]
-                inh_list = [i.strip().lower() for i in str(row["inheritance"]).split("/")]
+            if is_genotype == is_phenotype:
+                logging.warning(f"Skipping sheet {sheet_name!r}: ambiguous classification")
+                continue
 
-                for z_code, i_code in zip(zyg_list, inh_list):
-                    if z_code not in ZYGOSITY_MAP:
-                        click.echo(f"❌ Sheet {sheet_name!r}: Unrecognized zygosity code {z_code!r}", err=True)
+            working_df = sheet_df.reset_index()
+            orig_index = working_df.columns[0]
+            new_index_col = (
+                "genotype_patient_ID" if is_genotype else "phenotype_patient_ID"
+            )
+            working_df = working_df.rename(columns={orig_index: new_index_col})
+
+            # verify any renamed columns are in correct order
+            for fld in EXPECTED_COLUMN_NEIGHBORS:
+                if fld in working_df.columns:
+                    try:
+                        verify_column_order(working_df, fld)
+                    except ValueError as err:
+                        logging.error(f"Sheet {sheet_name!r}: {err}")
                         sys.exit(1)
-                    if i_code not in INHERITANCE_MAP:
-                        click.echo(f"❌ Sheet {sheet_name!r}: Unrecognized inheritance code {i_code!r}", err=True)
-                        sys.exit(1)
 
-                    genotype_records.append(Genotype(
-                        genotype_patient_ID=str(row["genotype_patient_ID"]),
-                        contact_email=row["contact_email"],
-                        phasing=bool(row["phasing"]),
-                        chromosome=row["chromosome"],
-                        start_position=int(row["start_position"]),
-                        end_position=int(row["end_position"]),
-                        reference=row["reference"],
-                        alternate=row["alternate"],
-                        gene_symbol=row["gene_symbol"],
-                        hgvsg=row["hgvsg"],
-                        hgvsc=row["hgvsc"],
-                        hgvsp=row["hgvsp"],
-                        zygosity=ZYGOSITY_MAP[z_code],
-                        inheritance=INHERITANCE_MAP[i_code],
-                    ))
-        else:
-            for _, row in working.iterrows():
-                # --- normalize phenotype fields into valid strings ---
-                raw_hpo = row["hpo_id"]
-                hpo_str = str(raw_hpo).strip()
-                if hpo_str.lower().startswith("hp:"):
-                    digits = hpo_str[3:]
-                    hpo_id = f"HP:{digits.zfill(7)}"
-                else:
-                    hpo_id = hpo_str.zfill(7)
+            if is_genotype:
+                logging.debug(f"Sheet {sheet_name!r} → GENOTYPE")
+                for _, row in working_df.iterrows():
+                    zyg_codes = [z.strip().lower() for z in str(row["zygosity"]).split("/")]
+                    inh_codes = [i.strip().lower() for i in str(row["inheritance"]).split("/")]
+                    for zc, ic in zip(zyg_codes, inh_codes):
+                        if zc not in ZYGOSITY_MAP:
+                            logging.error(f"Unknown zygosity code {zc!r} in {sheet_name!r}")
+                            sys.exit(1)
+                        if ic not in INHERITANCE_MAP:
+                            logging.error(f"Unknown inheritance code {ic!r} in {sheet_name!r}")
+                            sys.exit(1)
 
-                raw_date = row["date_of_observation"]
-                date_str = str(raw_date).strip()
-                if not date_str.upper().startswith("T"):
-                    date_str = f"T{date_str}"
+                        Genotype(
+                            genotype_patient_ID=str(row[new_index_col]),
+                            contact_email=row["contact_email"],
+                            phasing=bool(row["phasing"]),
+                            chromosome=row["chromosome"],
+                            start_position=int(row["start_position"]),
+                            end_position=int(row["end_position"]),
+                            reference=row["reference"],
+                            alternate=row["alternate"],
+                            gene_symbol=row["gene_symbol"],
+                            hgvsg=row["hgvsg"],
+                            hgvsc=row["hgvsc"],
+                            hgvsp=row["hgvsp"],
+                            zygosity=ZYGOSITY_MAP[zc],
+                            inheritance=INHERITANCE_MAP[ic],
+                        )
+                        count_genotype_records += 1
 
-                phenotype_records.append(Phenotype(
-                    phenotype_patient_ID=str(row["phenotype_patient_ID"]),
-                    HPO_ID=hpo_id,
-                    date_of_observation=date_str,
-                    status=bool(row["status"]),
-                ))
+            else:
+                logging.debug(f"Sheet {sheet_name!r} → PHENOTYPE")
+                for _, row in working_df.iterrows():
+                    Phenotype(
+                        phenotype_patient_ID=str(row[new_index_col]),
+                        HPO_ID=row["hpo_id"],
+                        date_of_observation=row["date_of_observation"],
+                        status=bool(row["status"]),
+                    )
+                    count_phenotype_records += 1
 
-    click.echo(f"Created {len(genotype_records)} Genotype objects")
-    click.echo(f"Created {len(phenotype_records)} Phenotype objects")
+        click.echo(f"{workbook_path}: Created {count_genotype_records} Genotype objects")
+        click.echo(f"{workbook_path}: Created {count_phenotype_records} Phenotype objects")
 
 
 if __name__ == "__main__":

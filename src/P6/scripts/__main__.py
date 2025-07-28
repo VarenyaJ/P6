@@ -68,10 +68,11 @@ ZYGOSITY_MAP = {
 
 # Map raw inheritance abbreviations to allowed dataclass inheritance values
 INHERITANCE_MAP = {
-    "unknown": "unknown",
+    "unknown":   "unknown",
     "inherited": "inherited",
     "denovo":    "de_novo_mutation",
 }
+
 
 def load_sheets_as_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
     """
@@ -177,10 +178,10 @@ def parse_excel(excel_file: str):
                     sys.exit(1)
 
         if is_genotype_sheet:
-            for _, row_data in working.iterrows():
+            for _, row in working.iterrows():
                 # handle slash‑separated zygosity and inheritance
-                zyg_list = [z.strip().lower() for z in str(row_data["zygosity"]).split("/")]
-                inh_list = [i.strip().lower() for i in str(row_data["inheritance"]).split("/")]
+                zyg_list = [z.strip().lower() for z in str(row["zygosity"]).split("/")]
+                inh_list = [i.strip().lower() for i in str(row["inheritance"]).split("/")]
 
                 for z_code, i_code in zip(zyg_list, inh_list):
                     if z_code not in ZYGOSITY_MAP:
@@ -191,28 +192,42 @@ def parse_excel(excel_file: str):
                         sys.exit(1)
 
                     genotype_records.append(Genotype(
-                        genotype_patient_ID=str(row_data["genotype_patient_ID"]),
-                        contact_email=row_data["contact_email"],
-                        phasing=bool(row_data["phasing"]),
-                        chromosome=row_data["chromosome"],
-                        start_position=int(row_data["start_position"]),
-                        end_position=int(row_data["end_position"]),
-                        reference=row_data["reference"],
-                        alternate=row_data["alternate"],
-                        gene_symbol=row_data["gene_symbol"],
-                        hgvsg=row_data["hgvsg"],
-                        hgvsc=row_data["hgvsc"],
-                        hgvsp=row_data["hgvsp"],
+                        genotype_patient_ID=str(row["genotype_patient_ID"]),
+                        contact_email=row["contact_email"],
+                        phasing=bool(row["phasing"]),
+                        chromosome=row["chromosome"],
+                        start_position=int(row["start_position"]),
+                        end_position=int(row["end_position"]),
+                        reference=row["reference"],
+                        alternate=row["alternate"],
+                        gene_symbol=row["gene_symbol"],
+                        hgvsg=row["hgvsg"],
+                        hgvsc=row["hgvsc"],
+                        hgvsp=row["hgvsp"],
                         zygosity=ZYGOSITY_MAP[z_code],
                         inheritance=INHERITANCE_MAP[i_code],
                     ))
         else:
-            for _, row_data in working.iterrows():
+            for _, row in working.iterrows():
+                # --- normalize phenotype fields into valid strings ---
+                raw_hpo = row["hpo_id"]
+                hpo_str = str(raw_hpo).strip()
+                if hpo_str.lower().startswith("hp:"):
+                    digits = hpo_str[3:]
+                    hpo_id = f"HP:{digits.zfill(7)}"
+                else:
+                    hpo_id = hpo_str.zfill(7)
+
+                raw_date = row["date_of_observation"]
+                date_str = str(raw_date).strip()
+                if not date_str.upper().startswith("T"):
+                    date_str = f"T{date_str}"
+
                 phenotype_records.append(Phenotype(
-                    phenotype_patient_ID=str(row_data["phenotype_patient_ID"]),
-                    HPO_ID=row_data["hpo_id"],
-                    date_of_observation=row_data["date_of_observation"],
-                    status=bool(row_data["status"]),
+                    phenotype_patient_ID=str(row["phenotype_patient_ID"]),
+                    HPO_ID=hpo_id,
+                    date_of_observation=date_str,
+                    status=bool(row["status"]),
                 ))
 
     click.echo(f"Created {len(genotype_records)} Genotype objects")

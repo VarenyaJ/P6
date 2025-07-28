@@ -31,7 +31,7 @@ class Genotype:
         genotype_patient_ID: Unique alphanumeric patient identifier.
         contact_email: Email for follow‑up communications.
         phasing: True if variant is phased, False otherwise.
-        chromosome: Chromosome encoding (hgvs, ucsc, refseq, etc.).
+        chromosome: Chromosome name or encoding (e.g., 'chr16' or 'hgvs').
         start_position: 1‑based start coordinate (nonnegative integer).
         end_position: 1‑based end coordinate (nonnegative integer).
         reference: Reference allele sequence.
@@ -68,9 +68,10 @@ class Genotype:
         if not _EMAIL_PATTERN.match(self.contact_email):
             raise ValueError(f"Invalid contact email: {self.contact_email!r}")
 
-        # Validate chromosome encoding
-        if self.chromosome.lower() not in _ALLOWED_CHROM_ENCODINGS:
-            raise ValueError(f"Unrecognized chromosome encoding: {self.chromosome!r}")
+        # Validate chromosome: allow either a known encoding or real 'chr*' names
+        chrom_lower = self.chromosome.lower()
+        if not (chrom_lower in _ALLOWED_CHROM_ENCODINGS or chrom_lower.startswith("chr")):
+            raise ValueError(f"Unrecognized chromosome: {self.chromosome!r}")
 
         # Validate positions
         for attr in ("start_position", "end_position"):

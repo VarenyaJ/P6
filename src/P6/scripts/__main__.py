@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Command‑line interface for P6 toolkit.
 Now determines sheet type by presence of multiple required key columns.
@@ -44,8 +45,9 @@ GENOTYPE_KEY_COLUMNS = {
     "inheritance",
 }
 
+# ← adjusted to lowercase to match normalized headers
 PHENOTYPE_KEY_COLUMNS = {
-    "HPO_ID",
+    "hpo_id",
     "date_of_observation",
     "status",
 }
@@ -56,10 +58,12 @@ def load_sheets_as_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
     Read each worksheet into a DataFrame:
       - first row = header
       - first column = index
+      - normalize all headers to snake_case lowercase
       - apply renames from RENAME_MAP
     """
     excel = pd.ExcelFile(workbook_path, engine="openpyxl")
-    tables = {}
+    tables: dict[str, pd.DataFrame] = {}
+
     for sheet_name in excel.sheet_names:
         df = pd.read_excel(
             excel,
@@ -68,8 +72,23 @@ def load_sheets_as_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
             index_col=0,
             engine="openpyxl",
         )
-        df = df.rename(columns={k: v for k, v in RENAME_MAP.items() if k in df.columns})
+
+        # ─── NEW ─── Normalize every header → snake_case lowercase:
+        df.columns = (
+            df.columns
+            .str.strip()
+            .str.replace(r"\s+", "_", regex=True)
+            .str.replace(":", "", regex=False)
+            .str.lower()
+        )
+
+        # now apply your existing renames (e.g. "ref" → "reference")
+        df = df.rename(
+            columns={orig: target for orig, target in RENAME_MAP.items() if orig in df.columns}
+        )
+
         tables[sheet_name] = df
+
     return tables
 
 
@@ -110,21 +129,21 @@ def parse_excel(excel_file: str):
     phenotype_records = []
 
     for sheet_name, df in all_sheets.items():
-        # Determine sheet type by the full set of required columns
         columns = set(df.columns)
         is_genotype_sheet = GENOTYPE_KEY_COLUMNS.issubset(columns)
         is_phenotype_sheet = PHENOTYPE_KEY_COLUMNS.issubset(columns)
 
         if is_genotype_sheet == is_phenotype_sheet:
-            # Either both True (unlikely) or both False → ambiguous
-            click.echo(f"⚠️  Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype", err=True)
+            click.echo(
+                f"⚠  Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype",
+                err=True
+            )
             continue
 
-        # Reset index into the appropriate patient_ID field
         id_column = "genotype_patient_ID" if is_genotype_sheet else "phenotype_patient_ID"
         working = df.reset_index().rename(columns={"index": id_column})
 
-        # Verify ordering of any renamed columns
+        # verify ordering of any renamed columns
         for field in EXPECTED_COLUMN_NEIGHBORS:
             if field in working.columns:
                 try:
@@ -133,32 +152,32 @@ def parse_excel(excel_file: str):
                     click.echo(f"❌ Sheet {sheet_name!r}: {e}", err=True)
                     sys.exit(1)
 
-        # Build domain objects
         if is_genotype_sheet:
-            for _, row in working.iterrows():
+            for row_index, row_data in working.iterrows():
                 genotype_records.append(Genotype(
-                    genotype_patient_ID=str(row["genotype_patient_ID"]),
-                    contact_email=row["contact_email"],
-                    phasing=bool(row["phasing"]),
-                    chromosome=row["chromosome"],
-                    start_position=int(row["start_position"]),
-                    end_position=int(row["end_position"]),
-                    reference=row["reference"],
-                    alternate=row["alternate"],
-                    gene_symbol=row["gene_symbol"],
-                    hgvsg=row["hgvsg"],
-                    hgvsc=row["hgvsc"],
-                    hgvsp=row["hgvsp"],
-                    zygosity=row["zygosity"],
-                    inheritance=row["inheritance"],
+                    genotype_patient_ID=str(row_data["genotype_patient_ID"]),
+                    contact_email=row_data["contact_email"],
+                    phasing=bool(row_data["phasing"]),
+                    chromosome=row_data["chromosome"],
+                    start_position=int(row_data["start_position"]),
+                    end_position=int(row_data["end_position"]),
+                    reference=row_data["reference"],
+                    alternate=row_data["alternate"],
+                    gene_symbol=row_data["gene_symbol"],
+                    hgvsg=row_data["hgvsg"],
+                    hgvsc=row_data["hgvsc"],
+                    hgvsp=row_data["hgvsp"],
+                    zygosity=row_data["zygosity"],
+                    inheritance=row_data["inheritance"],
                 ))
         else:
-            for _, row in working.iterrows():
+            for row_index, row_data in working.iterrows():
                 phenotype_records.append(Phenotype(
-                    phenotype_patient_ID=str(row["phenotype_patient_ID"]),
-                    HPO_ID=row["HPO_ID"],
-                    date_of_observation=row["date_of_observation"],
-                    status=bool(row["status"]),
+                    phenotype_patient_ID=str(row_data["phenotype_patient_ID"]),
+                    # ← pull the normalized/lowercase column here
+                    HPO_ID=row_data["hpo_id"],
+                    date_of_observation=row_data["date_of_observation"],
+                    status=bool(row_data["status"]),
                 ))
 
     click.echo(f"Created {len(genotype_records)} Genotype objects")

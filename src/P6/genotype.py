@@ -11,9 +11,7 @@ from dataclasses import dataclass
 # Patterns and allowed enums
 _VALID_ID = re.compile(r"^[A-Za-z0-9]+$")
 _EMAIL_PATTERN = re.compile(r"^[\w\.\+\-]+@[\w\.\-]+\.[A-Za-z]+$")
-_ALLOWED_CHROM_ENCODINGS = {
-    "hgvs", "ucsc", "refseq", "ensembl", "ncbi", "ega"
-}
+_ALLOWED_CHROM_ENCODINGS = {"hgvs", "ucsc", "refseq", "ensembl", "ncbi", "ega"}
 _ALLOWED_ZYGOSITIES = {
     "compound_heterozygosity",
     "homozygous",
@@ -21,11 +19,7 @@ _ALLOWED_ZYGOSITIES = {
     "hemizygous",
     "mosaic",
 }
-_ALLOWED_INHERITANCE_MODES = {
-    "unknown",
-    "inherited",
-    "de_novo_mutation",
-}
+_ALLOWED_INHERITANCE_MODES = {"unknown", "inherited", "de_novo_mutation"}
 
 
 @dataclass
@@ -85,7 +79,14 @@ class Genotype:
                 raise ValueError(f"{attr} must be a non‑negative integer, got {val!r}")
 
         # Validate allele/gene/HGVS strings
-        for attr in ("reference", "alternate", "gene_symbol", "hgvsg", "hgvsc", "hgvsp"):
+        for attr in (
+            "reference",
+            "alternate",
+            "gene_symbol",
+            "hgvsg",
+            "hgvsc",
+            "hgvsp",
+        ):
             val = getattr(self, attr)
             if not isinstance(val, str) or not val.strip():
                 raise ValueError(f"{attr} must be a nonempty string")

@@ -8,7 +8,7 @@ def test_valid_phenotype_instantiation():
         phenotype_patient_ID="PXYZ789",
         HPO_ID="HP:0001250",
         date_of_observation="T0",
-        status=True
+        status=True,
     )
     assert isinstance(p, Phenotype)
 
@@ -21,7 +21,7 @@ def test_invalid_hpo_id_raises(bad_hpo):
             phenotype_patient_ID="P1",
             HPO_ID=bad_hpo,
             date_of_observation="T1",
-            status=False
+            status=False,
         )
 
 
@@ -33,5 +33,5 @@ def test_invalid_timestamp_raises(bad_timestamp):
             phenotype_patient_ID="P2",
             HPO_ID="0001250",
             date_of_observation=bad_timestamp,
-            status=True
+            status=True,
         )

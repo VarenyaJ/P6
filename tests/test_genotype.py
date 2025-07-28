@@ -18,7 +18,7 @@ def test_valid_genotype_instantiation():
         hgvsc="c.200A>T",
         hgvsp="p.Lys67Asn",
         zygosity="heterozygous",
-        inheritance="inherited"
+        inheritance="inherited",
     )
     assert isinstance(g, Genotype)
 
@@ -41,7 +41,7 @@ def test_invalid_patient_id_raises(bad_id):
             hgvsc="c.1C>G",
             hgvsp="p.Ala1Gly",
             zygosity="homozygous",
-            inheritance="unknown"
+            inheritance="unknown",
         )
 
 
@@ -63,5 +63,5 @@ def test_invalid_email_format_raises(bad_email):
             hgvsc="c.10G>A",
             hgvsp="p.Gly4Asp",
             zygosity="mosaic",
-            inheritance="de_novo_mutation"
+            inheritance="de_novo_mutation",
         )

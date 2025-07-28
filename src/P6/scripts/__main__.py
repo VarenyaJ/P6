@@ -31,13 +31,15 @@ def load_named_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
             )
 
             # rename only where Excel headers don't already match our attributes
-            df = df.rename(columns={
-                "ref": "reference",
-                "alt": "alternate",
-                "gene": "gene_symbol",
-                "start": "start_position",
-                "end": "end_position",
-            })
+            df = df.rename(
+                columns={
+                    "ref": "reference",
+                    "alt": "alternate",
+                    "gene": "gene_symbol",
+                    "start": "start_position",
+                    "end": "end_position",
+                }
+            )
 
             tables[table.name] = df
 

@@ -40,9 +40,15 @@ class Phenotype:
             raise ValueError(f"Invalid HPO ID: {self.HPO_ID!r}")
 
         # Validate timestamp
-        if not isinstance(self.date_of_observation, str) or not _TIMESTAMP_PATTERN.match(self.date_of_observation):
-            raise ValueError(f"Invalid date_of_observation: {self.date_of_observation!r}")
+        if not isinstance(
+            self.date_of_observation, str
+        ) or not _TIMESTAMP_PATTERN.match(self.date_of_observation):
+            raise ValueError(
+                f"Invalid date_of_observation: {self.date_of_observation!r}"
+            )
 
         # Validate status
         if not isinstance(self.status, bool):
-            raise ValueError(f"status must be a boolean, got {type(self.status).__name__}")
+            raise ValueError(
+                f"status must be a boolean, got {type(self.status).__name__}"
+            )

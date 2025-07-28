@@ -5,7 +5,9 @@ from P6.periodicity import FrequencyModifier, Periodicity
 def test_frequency_modifier_from_label():
     """Ensure that known labels map to the correct enum."""
     assert FrequencyModifier.from_label("Obligate") == FrequencyModifier.OBLIGATE
-    assert FrequencyModifier.from_label("very frequent") == FrequencyModifier.VERY_FREQUENT
+    assert (
+        FrequencyModifier.from_label("very frequent") == FrequencyModifier.VERY_FREQUENT
+    )
 
 
 def test_frequency_modifier_invalid_label_raises():

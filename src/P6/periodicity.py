@@ -13,6 +13,7 @@ class FrequencyModifier(Enum):
     Enumeration of frequency modifiers for phenotypic abnormalities.
     Mirrors HP_0040280–HP_0040285 under the “Frequency” class in HPO.
     """
+
     OBLIGATE = auto()
     VERY_FREQUENT = auto()
     FREQUENT = auto()
@@ -46,4 +47,5 @@ class Periodicity:
     """
     Wraps a FrequencyModifier for convenience in data models.
     """
+
     frequency_modifier: FrequencyModifier

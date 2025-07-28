@@ -8,37 +8,103 @@ import pandas as pd
 
 from P6.genotype import Genotype
 from P6.phenotype import Phenotype
-from P6.periodicity import FrequencyModifier, Periodicity
+
+
+def load_named_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
+    """
+    Discover every named table in an Excel workbook and return
+    a mapping of table_name -> DataFrame whose columns match
+    exactly the attribute names of your domain classes.
+    """
+    workbook = load_workbook(filename=workbook_path, data_only=True)
+    tables: dict[str, pd.DataFrame] = {}
+
+    for worksheet in workbook.worksheets:
+        for table in worksheet.tables.values():
+            df = pd.read_excel(
+                workbook_path,
+                sheet_name=worksheet.title,
+                header=0,
+                index_col=0,
+                usecols=table.ref,
+                engine="openpyxl",
+            )
+
+            # rename only where Excel headers don't already match our attributes
+            df = df.rename(columns={
+                "ref": "reference",
+                "alt": "alternate",
+                "gene": "gene_symbol",
+                "start": "start_position",
+                "end": "end_position",
+            })
+
+            tables[table.name] = df
+
+    return tables
 
 
 @click.group()
 def main():
-    """P6: parse genomic & phenotypic data into typed Python objects."""
+    """P6 CLI: parse genomic & phenotypic tables into Python objects."""
     pass
 
 
 @main.command()
-@click.argument("excel_path", type=click.Path(exists=True))
-def parse_tables(excel_path):
+@click.argument("excel_file", type=click.Path(exists=True))
+def parse_excel(excel_file: str):
     """
-    Discover all named tables in an Excel workbook, validate headers/rows
-    are consistent, and report counts of Genotype vs Phenotype entries.
+    Parse every named table in the Excel file, build Genotype and
+    Phenotype objects, and report counts.
     """
-    wb = load_workbook(filename=excel_path, data_only=True)
-    all_counts = {"genotype": 0, "phenotype": 0}
+    named_tables = load_named_tables(excel_file)
 
-    for sheet in wb.worksheets:
-        for tbl in sheet.tables.values():
-            df = pd.read_excel(excel_path, sheet_name=sheet.title,
-                               header=0, index_col=0, usecols=tbl.ref, engine="openpyxl")
-            # rudimentary dispatch by column names
-            if "phasing" in df.columns:
-                all_counts["genotype"] += len(df)
-            elif "HPO_ID" in df.columns:
-                all_counts["phenotype"] += len(df)
+    genotype_records: list[Genotype] = []
+    phenotype_records: list[Phenotype] = []
 
-    click.echo(f"Found {all_counts['genotype']} genotype rows")
-    click.echo(f"Found {all_counts['phenotype']} phenotype rows")
+    for table_name, df in named_tables.items():
+        # Turn the index into the patient‐ID column
+        df = df.reset_index().rename(columns={"index": "patient_id"})
+
+        if "phasing" in df.columns:
+            # ── Genotype table ──
+            for _, row in df.iterrows():
+                genotype_records.append(
+                    Genotype(
+                        genotype_patient_ID=str(row["patient_id"]),
+                        contact_email=row["contact_email"],
+                        phasing=bool(row["phasing"]),
+                        chromosome=row["chromosome"],
+                        start_position=int(row["start_position"]),
+                        end_position=int(row["end_position"]),
+                        reference=row["reference"],
+                        alternate=row["alternate"],
+                        gene_symbol=row["gene_symbol"],
+                        hgvsg=row["hgvsg"],
+                        hgvsc=row["hgvsc"],
+                        hgvsp=row["hgvsp"],
+                        zygosity=row["zygosity"],
+                        inheritance=row["inheritance"],
+                    )
+                )
+
+        elif "HPO_ID" in df.columns:
+            # ── Phenotype table ──
+            for _, row in df.iterrows():
+                phenotype_records.append(
+                    Phenotype(
+                        phenotype_patient_ID=str(row["patient_id"]),
+                        HPO_ID=row["HPO_ID"],
+                        date_of_observation=row["date_of_observation"],
+                        status=bool(row["status"]),
+                    )
+                )
+
+        else:
+            click.echo(f"Skipping table {table_name!r}: unknown schema")
+
+    click.echo(f"Created {len(genotype_records)} Genotype objects")
+    click.echo(f"Created {len(phenotype_records)} Phenotype objects")
 
 
 if __name__ == "__main__":

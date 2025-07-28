@@ -12,20 +12,26 @@ from P6.phenotype import Phenotype
 
 # Columns that need renaming → target dataclass fields
 RENAME_MAP = {
-    "ref": "reference",
-    "alt": "alternate",
-    "gene": "gene_symbol",
-    "start": "start_position",
-    "end": "end_position",
+    # genotype columns
+    "ref":       "reference",
+    "alt":       "alternate",
+    "gene":      "gene_symbol",
+    "start":     "start_position",
+    "end":       "end_position",
+    "chrom":     "chromosome",
+
+    # phenotype columns
+    "hpo":       "hpo_id",
+    "timestamp": "date_of_observation",
 }
 
 # For any renamed field, the two neighbors it must sit between
 EXPECTED_COLUMN_NEIGHBORS = {
     "start_position": ("chromosome", "end_position"),
-    "end_position": ("start_position", "reference"),
-    "reference": ("end_position", "alternate"),
-    "alternate": ("reference", "gene_symbol"),
-    "gene_symbol": ("alternate", "hgvsg"),
+    "end_position":   ("start_position", "reference"),
+    "reference":      ("end_position", "alternate"),
+    "alternate":      ("reference", "gene_symbol"),
+    "gene_symbol":    ("alternate", "hgvsg"),
 }
 
 # Minimal required columns (after renaming) to identify each sheet type
@@ -45,7 +51,6 @@ GENOTYPE_KEY_COLUMNS = {
     "inheritance",
 }
 
-# ← adjusted to lowercase to match normalized headers
 PHENOTYPE_KEY_COLUMNS = {
     "hpo_id",
     "date_of_observation",
@@ -73,16 +78,17 @@ def load_sheets_as_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
             engine="openpyxl",
         )
 
-        # ─── NEW ─── Normalize every header → snake_case lowercase:
+        # CLEAN & NORMALIZE headers:
         df.columns = (
             df.columns
-            .str.strip()
-            .str.replace(r"\s+", "_", regex=True)
-            .str.replace(":", "", regex=False)
-            .str.lower()
+              .str.strip()
+              .str.replace(r"\s*\(.*?\)", "", regex=True)  # drop any "(…)"
+              .str.replace(r"\s+", "_",    regex=True)    # spaces → underscore
+              .str.replace(":",         "",    regex=False)  # drop colons
+              .str.lower()
         )
 
-        # now apply your existing renames (e.g. "ref" → "reference")
+        # apply specific renames (e.g. "ref" → "reference")
         df = df.rename(
             columns={orig: target for orig, target in RENAME_MAP.items() if orig in df.columns}
         )
@@ -104,7 +110,7 @@ def verify_column_order(df: pd.DataFrame, field: str) -> None:
     if cols[idx - 1] != before or cols[idx + 1] != after:
         raise ValueError(
             f"Field {field!r} should be between {before!r} and {after!r}, "
-            f"found neighbors {cols[idx-1]!r} and {cols[idx+1]!r}."
+            f"found neighbors {cols[idx - 1]!r} and {cols[idx + 1]!r}."
         )
 
 
@@ -136,14 +142,14 @@ def parse_excel(excel_file: str):
         if is_genotype_sheet == is_phenotype_sheet:
             click.echo(
                 f"⚠  Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype",
-                err=True
+                err=True,
             )
             continue
 
         id_column = "genotype_patient_ID" if is_genotype_sheet else "phenotype_patient_ID"
         working = df.reset_index().rename(columns={"index": id_column})
 
-        # verify ordering of any renamed columns
+        # Verify ordering of any renamed columns
         for field in EXPECTED_COLUMN_NEIGHBORS:
             if field in working.columns:
                 try:
@@ -174,7 +180,6 @@ def parse_excel(excel_file: str):
             for row_index, row_data in working.iterrows():
                 phenotype_records.append(Phenotype(
                     phenotype_patient_ID=str(row_data["phenotype_patient_ID"]),
-                    # ← pull the normalized/lowercase column here
                     HPO_ID=row_data["hpo_id"],
                     date_of_observation=row_data["date_of_observation"],
                     status=bool(row_data["status"]),

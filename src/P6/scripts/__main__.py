@@ -146,8 +146,11 @@ def parse_excel(excel_file: str):
             )
             continue
 
+        # rename the former-index column (whatever its original header was)
         id_column = "genotype_patient_ID" if is_genotype_sheet else "phenotype_patient_ID"
-        working = df.reset_index().rename(columns={"index": id_column})
+        working = df.reset_index()
+        original_index_col = working.columns[0]
+        working = working.rename(columns={original_index_col: id_column})
 
         # Verify ordering of any renamed columns
         for field in EXPECTED_COLUMN_NEIGHBORS:

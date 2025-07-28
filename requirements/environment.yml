@@ -9,7 +9,7 @@ dependencies:
 
   # Pip‐only dependencies — must be indented under 'pip:' (no leading dash)
   - pip:
-      - -r requirements.txt         # core LLM & converter libraries (ollama, llama-index, docling)
-      - -r requirements_scripts.txt # CLI helpers like click
-      - -r requirements_test.txt    # testing & formatting (pytest, black)
-      #- -e .                        # install the package in editable mode
+      - -r requirements.txt
+      - -r requirements_scripts.txt
+      - -r requirements_test.txt
+      - -e .

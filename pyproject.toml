@@ -1,12 +1,10 @@
 [build-system]
-# setuptools builds the package; wheel lets pip build a .whl for faster installs
 requires = ["setuptools>=65.6.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name                 =   "P6"
-# version could be read from src/P6/__init__.py's __version__ attribute
-# version            = { attr = "P6.__version__" }
+version              = { attr = "P6.__version__" }
 description          = "A tooklit for working with the `PreGen` repository at the University of New South Wales under Dr. Tony Roscioli"
 readme               = "README.md"
 requires-python      = ">=3.13"   # lock to Python 3.13 as per the Conda environment
@@ -19,12 +17,36 @@ classifiers          = [
 ]
 keywords             = ["Global Alliance for Genomics and Health", "GA4GH", "Phenopacket", "GA4GH Phenopacket Schema", "Human Phenotype Ontology", "HPO", "Prenatal", "Fetal Sequencing Consortium"]
 
-# version in __init__
-dynamic = ["version", "dependencies"]
+# Core runtime deps (pulled from requirements/requirements.txt)
+dependencies = [
+   "phenopackets==2.0.2.post4",
+   "protobuf==3.20.3",
+   "jupyterlab==4.4.4",
+   "ipykernel==6.29.5",
+   "openpyxl==3.1.5",
+   "pandas==2.3.1",
+   "hpo-toolkit==0.7.0",
+]
 
-# Console-script entry-points to expose all the click commands
+# Optional extras
+[project.optional-dependencies]
+# for CLI-script users
+scripts = [
+   "click==8.2.1",
+   "GitPython==3.1.44",
+   "requests==2.32.4",
+   "biopython==1.85",
+]
+# for running tests & formatting
+test = [
+   "pytest==8.4.0",
+   "ruff==0.12.1",
+]
+
+# Console-script entry-points to expose all the click commands, e.g. mycmd = "P6.scripts.my_module:main"
+# for now leaving the placeholder
 [project.scripts]
-Ω              = "P6.scripts.Ω:Ω"   # Placeholder
+p6              = "P6.scripts.Ω:Ω"   # Placeholder
 
 [project.urls]
 homepage                    = "https://github.com/VarenyaJ/P6"
@@ -33,13 +55,9 @@ documentation               = "https://github.com/VarenyaJ/P6.git"
 bugtracker                  = "https://github.com/VarenyaJ/P6/issues"
 
 [tool.setuptools]
-# all the code lives under src/, with a P6/ package
 package-dir = { "" = "src" }
-# packages    = ["P6", "P6.scripts"]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["src"]
-
-
-# Omit the [project.dependencies] section entirely to leave all dependency management to Conda.
+where    = ["src"]
+include  = ["P6*"]   # grabs P6 plus any sub‑packages like P6.scripts

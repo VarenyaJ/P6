@@ -1,4 +1,4 @@
-name: p5
+name: p6
 channels:
  - conda-forge                      # priority channel for up-to-date, cross-compiled packages (biopython, selenium, and other packages we might need)
  - defaults                         # fallback to packages from default channel

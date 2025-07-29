@@ -50,7 +50,7 @@ conda env remove -n p6 -y
 # 3. Create new env
 conda env create -f requirements/environment.yml -n p6 -y || mamba env create -f requirements/environment.yml -n p6 -y
 
-# 4. TODO: Validate packages work with a little test
+# 4. TODO: Validate packages work with a little test like this
 conda activate p6
 python - <<EOF
 import phenopackets, hpo-toolkit, pandas

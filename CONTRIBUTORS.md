@@ -15,6 +15,8 @@ Here is an example for conda:
 
 ```shell
 conda env create -f requirements/environment.yml -y
+conda activate P6
+python3 -m pip install .
 ```
 
 or use PIP directly:

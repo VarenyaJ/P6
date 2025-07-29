@@ -11,4 +11,3 @@ dependencies:
   - pip:
       - -r requirements.txt
       - -r requirements_test.txt
-      - .

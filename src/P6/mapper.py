@@ -104,7 +104,7 @@ class DefaultMapper(TableMapper):
                     # try:
                     #     _verify_column_order(working, field)
                     # except ValueError as e:
-                    #     click.echo(f"❌ Sheet {sheet_name!r}: {e}", err=True)
+                    #     click.echo(f"Sheet {sheet_name!r}: {e}", err=True)
                     #     sys.exit(1)
 
             if is_genotype_sheet:
@@ -125,7 +125,7 @@ class DefaultMapper(TableMapper):
                             
                         if i_code not in INHERITANCE_MAP:
                             notepad.add_error(
-                                f"❌ Sheet {sheet_name!r}: Unrecognized inheritance code {i_code!r}",
+                                f"Sheet {sheet_name!r}: Unrecognized inheritance code {i_code!r}",
                             )
 
                         genotype_records.append(

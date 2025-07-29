@@ -2,7 +2,7 @@ import os
 import re
 import pytest
 from click.testing import CliRunner
-from P6.scripts.__main__ import main
+from P6.__main__ import main
 
 @pytest.fixture
 def sample_xlsx_path():

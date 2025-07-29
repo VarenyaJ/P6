@@ -24,7 +24,14 @@ p6 --help
 
 and you should get a similar output:
 
-TODO: paste the CLI output
+```
+Usage: P6 [OPTIONS] COMMAND [ARGS]...
+
+  P6 CLI: parse genomic & phenotypic sheets into typed Python objects.
+
+Options:
+  --help  Show this message and exit.
+```
 
 ## Generate phenopackets
 

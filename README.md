@@ -57,17 +57,21 @@ import phenopackets, hpo-toolkit, pandas
 print("OK:", phenopackets.__version__, hpo-toolkit.__version__, pandas.__version__)
 EOF
 
-# 4.5 TODO: Install and Verify Package
-pip install -e .
-python -c "import p6; print(p6.__version__)"
-sample --help
-
-pytest --maxfail=1 -q
+# 5. Install and Verify Package
+yes | pip uninstall P6;
+pip cache purge;
+yes | pip install --upgrade pip;
+pip install -e .[scripts,test];
+which p6;
+head -n20 "$(which p6)";
+p6 --help;
+python -c "import P6; print(P6.__version__)";
+pytest --maxfail=1 -q;
 ```
 
 # TODO:
 
-### 5. Install lock tool & generate lock
+### 6. Install lock tool & generate lock
 ```
 conda install -n p6 -c conda-forge conda-lock -y || mamba install -n p6 -c conda-forge conda-lock -y
 conda-lock lock -f requirements/environment.yml \

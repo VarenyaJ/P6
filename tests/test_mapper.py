@@ -1,7 +1,6 @@
 import pytest
 
 import hpotk
-import pandas as pd
 
 from stairval.notepad import create_notepad
 
@@ -22,4 +21,3 @@ class TestDefaultMapper:
         )
 
         assert len(pps) is not None
-

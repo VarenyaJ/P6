@@ -14,9 +14,7 @@ from .phenotype import Phenotype
 class TableMapper(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def apply_mapping(
-        self, 
-        tables: dict[str, pd.DataFrame],
-        notepad: Notepad,
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad
     ) -> typing.Sequence[Phenopacket]:
         pass
 
@@ -67,13 +65,11 @@ INHERITANCE_MAP = {
 
 
 class DefaultMapper(TableMapper):
-    def __init__(self, hpo: hpotk.MinimalOntology,):
+    def __init__(self, hpo: hpotk.MinimalOntology):
         self._hpo = hpo
 
     def apply_mapping(
-        self,
-        tables: dict[str, pd.DataFrame],
-        notepad: Notepad,
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad
     ) -> typing.Sequence[Phenopacket]:
         genotype_records = []
         phenotype_records = []
@@ -85,7 +81,7 @@ class DefaultMapper(TableMapper):
 
             if is_genotype_sheet == is_phenotype_sheet:
                 notepad.add_error(
-                    f"⚠  Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype",
+                    f"⚠  Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype"
                 )
                 continue
 
@@ -120,12 +116,12 @@ class DefaultMapper(TableMapper):
                     for z_code, i_code in zip(zyg_list, inh_list):
                         if z_code not in ZYGOSITY_MAP:
                             notepad.add_error(
-                                f"Sheet {sheet_name!r}: Unrecognized zygosity code {z_code!r}",
+                                f"Sheet {sheet_name!r}: Unrecognized zygosity code {z_code!r}"
                             )
-                            
+
                         if i_code not in INHERITANCE_MAP:
                             notepad.add_error(
-                                f"Sheet {sheet_name!r}: Unrecognized inheritance code {i_code!r}",
+                                f"Sheet {sheet_name!r}: Unrecognized inheritance code {i_code!r}"
                             )
 
                         genotype_records.append(

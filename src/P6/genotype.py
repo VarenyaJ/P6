@@ -70,7 +70,9 @@ class Genotype:
 
         # Validate chromosome: allow either a known encoding or real 'chr*' names
         chrom_lower = self.chromosome.lower()
-        if not (chrom_lower in _ALLOWED_CHROM_ENCODINGS or chrom_lower.startswith("chr")):
+        if not (
+            chrom_lower in _ALLOWED_CHROM_ENCODINGS or chrom_lower.startswith("chr")
+        ):
             raise ValueError(f"Unrecognized chromosome: {self.chromosome!r}")
 
         # Validate positions

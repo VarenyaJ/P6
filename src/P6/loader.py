@@ -14,6 +14,7 @@ RENAME_MAP = {
     "timestamp": "date_of_observation",
 }
 
+
 def load_sheets_as_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
     """
     Read each worksheet into a DataFrame:
@@ -22,7 +23,7 @@ def load_sheets_as_tables(workbook_path: str) -> dict[str, pd.DataFrame]:
       - normalize all headers to snake_case lowercase
       - apply renames from RENAME_MAP
     """
-    
+
     excel = pd.ExcelFile(workbook_path, engine="openpyxl")
     tables: dict[str, pd.DataFrame] = {}
 

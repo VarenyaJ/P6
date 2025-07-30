@@ -8,9 +8,13 @@ import click
 import hpotk
 import pathlib
 import sys
+
+import requests
 import typing
 
 from stairval.notepad import create_notepad
+from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
+from datetime import datetime
 
 from .loader import load_sheets_as_tables
 from .mapper import DefaultMapper
@@ -27,6 +31,32 @@ def main():
 @click.option("--hpo-version", default=None, type=typing.Optional[str])
 def download(d: str, hpo_version: typing.Optional[str]):
     # TODO: download an HPO
+    """
+    Download a specific or the latest HPO JSON release into the data folder.
+    """
+    datadir = pathlib.Path(d)
+    datadir.mkdir(parents=True, exist_ok=True)
+    # figure out which tag to download
+    if hpo_version:
+        tag = hpo_version if hpo_version.startswith("v") else f"v{hpo_version}"
+    else:
+        # GitHub latest‐release API
+        resp = requests.get(
+            "https://api.github.com/repos/obophenotype/human-phenotype-ontology/releases/latest"
+        )
+        resp.raise_for_status()
+        tag = resp.json()["tag_name"]
+    url = (
+        f"https://github.com/obophenotype/human-phenotype-ontology/"
+        f"releases/download/{tag}/hp.json"
+        )
+    click.echo(f"Downloading HPO release {tag} …")
+    resp = requests.get(url)
+    resp.raise_for_status()
+    out = datadir / "hp.json"
+    with open(out, "wb") as f:
+        f.write(resp.content)
+    click.echo(f"Saved HPO JSON to {out}")
     pass
 
 
@@ -81,6 +111,24 @@ def parse_excel(excel_file: str, d: str, hpo: typing.Optional[str] = None):
     # assert not notepad.has_errors_or_warnings(include_subsections=True)
     # TODO: write phenopackets to a folder
     #click.echo(f"Created {len(pps)} Phenotype objects")
+
+    base = pathlib.Path.cwd() / "phenopacket-from-excel" / datetime.now().strftime("%Y%m%dT%H%M%S") / "phenopackets"
+    base.mkdir(parents=True, exist_ok=True)
+    total = 0
+    for rec in genotype_records + phenotype_records:
+        # one protobuffer per record
+        pkt = Phenopacket()
+        # every phenopacket needs at least an ID
+        if hasattr(rec, "genotype_patient_ID"):
+            pkt.id = f"genotype-{rec.genotype_patient_ID}"
+        else:
+            pkt.id = f"phenotype-{rec.phenotype_patient_ID}"
+        # TODO: Look if we can populate other fields here, e.g. observations, units, etc.
+        fn = base / f"{pkt.id}.pb"
+        with open(fn, "wb") as out_f:
+            out_f.write(pkt.SerializeToString())
+        total += 1
+    click.echo(f"Wrote {total} phenopacket files to {base}")
     click.echo(f"Created {len(genotype_records)} Genotype objects")
     click.echo(f"Created {len(phenotype_records)} Phenotype objects")
 

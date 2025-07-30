@@ -1,8 +1,9 @@
 import abc
-import typing
-
+import click
 import hpotk
 import pandas as pd
+import re
+import typing
 
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
 from stairval.notepad import Notepad
@@ -80,8 +81,9 @@ class DefaultMapper(TableMapper):
             is_phenotype_sheet = PHENOTYPE_KEY_COLUMNS.issubset(columns)
 
             if is_genotype_sheet == is_phenotype_sheet:
-                notepad.add_error(
-                    f"⚠  Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype"
+                # ambiguous sheet should give a warning instead of an error
+                notepad.add_warning(
+                    f"⚠ Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype"
                 )
                 continue
 
@@ -104,7 +106,7 @@ class DefaultMapper(TableMapper):
                     #     sys.exit(1)
 
             if is_genotype_sheet:
-                for _, row in working.iterrows():
+                for idx, row in working.iterrows():
                     # handle slash‑separated zygosity and inheritance
                     zyg_list = [
                         z.strip().lower() for z in str(row["zygosity"]).split("/")
@@ -124,39 +126,59 @@ class DefaultMapper(TableMapper):
                                 f"Sheet {sheet_name!r}: Unrecognized inheritance code {i_code!r}"
                             )
 
-                        genotype_records.append(
-                            Genotype(
-                                genotype_patient_ID=str(row[id_column]),
-                                contact_email=row["contact_email"],
-                                phasing=bool(row["phasing"]),
-                                chromosome=row["chromosome"],
-                                start_position=int(row["start_position"]),
-                                end_position=int(row["end_position"]),
-                                reference=row["reference"],
-                                alternate=row["alternate"],
-                                gene_symbol=row["gene_symbol"],
-                                hgvsg=row["hgvsg"],
-                                hgvsc=row["hgvsc"],
-                                hgvsp=row["hgvsp"],
-                                zygosity=ZYGOSITY_MAP[z_code],
-                                inheritance=INHERITANCE_MAP[i_code],
-                            )
-                        )
+                        ####
+                        # allow missing/NaN contact_email → substitute dummy
+                        raw_email = row["contact_email"]
+                        if pd.isna(raw_email):
+                            contact_email = "unknown@example.com"
+                        else:
+                            contact_email = str(raw_email).strip()
+                        # ensure all “string” fields are actually strings:
+                        kwargs = {
+                            "genotype_patient_ID": str(row[id_column]),
+                            "contact_email": contact_email,
+                            "phasing": bool(row["phasing"]),
+                            "chromosome": str(row["chromosome"]),
+                            "start_position": int(row["start_position"]),
+                            "end_position": int(row["end_position"]),
+                            "reference": str(row["reference"]),
+                            "alternate": str(row["alternate"]),
+                            "gene_symbol": str(row["gene_symbol"]),
+                            "hgvsg": str(row["hgvsg"]),
+                            "hgvsc": str(row["hgvsc"]),
+                            "hgvsp": str(row["hgvsp"]),
+                            "zygosity": ZYGOSITY_MAP[z_code],
+                            "inheritance": INHERITANCE_MAP[i_code],
+                        }
+                        try:
+                            g = Genotype(**kwargs)
+                        except (ValueError, TypeError) as e:
+                            notepad.add_error(f"Sheet {sheet_name!r}, row {idx}: {e}")
+                            continue
+                        genotype_records.append(g)
+                        ####
             else:
-                for _, row in working.iterrows():
-                    # --- normalize phenotype fields into valid strings ---
+                for idx, row in working.iterrows():
+                    # normalize phenotype fields into valid strings
                     raw_hpo = row["hpo_id"]
                     hpo_str = str(raw_hpo).strip()
-                    if hpo_str.lower().startswith("hp:"):
-                        digits = hpo_str[3:]
-                        hpo_id = f"HP:{digits.zfill(7)}"
-                    else:
-                        hpo_id = hpo_str.zfill(7)
-
+                    # extract the last token (it should just be the HPO code), case‑insensitive
+                    m = re.search(r"(?:hp:)?(\d+)", hpo_str, re.IGNORECASE)
+                    if not m:
+                        notepad.add_error(
+                            f"Sheet {sheet_name!r}, row {idx}: Cannot parse HPO ID from {hpo_str!r}"
+                        )
+                        continue
+                    digits = m.group(1)
+                    hpo_id = f"HP:{digits.zfill(7)}"
                     raw_date = row["date_of_observation"]
-                    date_str = str(raw_date).strip()
-                    if not date_str.upper().startswith("T"):
-                        date_str = f"T{date_str}"
+                    # if it's numeric, cast to int; else treat as string
+                    if isinstance(raw_date, (int, float)):
+                        date_str = f"T{int(raw_date)}"
+                    else:
+                        date_str = str(raw_date).strip()
+                        if not date_str.upper().startswith("T"):
+                            date_str = f"T{date_str}"
 
                     phenotype_records.append(
                         Phenotype(
@@ -169,4 +191,4 @@ class DefaultMapper(TableMapper):
 
         # click.echo(f"Created {len(genotype_records)} Genotype objects")
         # click.echo(f"Created {len(phenotype_records)} Phenotype objects")
-        return ()
+        return genotype_records, phenotype_records

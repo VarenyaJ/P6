@@ -14,7 +14,7 @@ def fpath_test_dir() -> str:
 
 @pytest.fixture(scope="session")
 def fpath_hpo(fpath_test_dir: str) -> str:
-    return os.path.join(fpath_test_dir, "hp.v2024-04-26.json.gz")
+    return os.path.join(fpath_test_dir, "data", "hp.v2024-04-26.json.gz")
 
 
 @pytest.fixture(scope="session")

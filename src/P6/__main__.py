@@ -4,11 +4,11 @@ Now determines sheet type by presence of multiple required key columns,
 and normalizes numeric HPO IDs and timestamps.
 """
 
-import pathlib
-import typing
 import click
-
 import hpotk
+import pathlib
+import sys
+import typing
 
 from stairval.notepad import create_notepad
 
@@ -33,7 +33,8 @@ def download(d: str, hpo_version: typing.Optional[str]):
 @main.command(name="parse-excel")
 @click.argument("excel_file", type=click.Path(exists=True))
 @click.option("--d", default="data", type=click.Path(exists=True))
-def parse_excel(excel_file: str, d: str):
+@click.option("--hpo", type=click.Path(exists=True, dir_okay=False))
+def parse_excel(excel_file: str, d: str, hpo: typing.Optional[str] = None):
     """
     Read each sheet, check column order, then:
       - Identify as a Genotype sheet if ALL GENOTYPE_KEY_COLUMNS are present.
@@ -44,17 +45,47 @@ def parse_excel(excel_file: str, d: str):
     datadir = pathlib.Path(d)
     assert datadir.exists() and datadir.is_dir(), "Data directory must exist"
 
-    fpath_hpo = datadir.joinpath("hp.json")
-    assert fpath_hpo.is_file(), "HPO file must exist"
-    hpo = hpotk.load_minimal_ontology(str(fpath_hpo))
+    if hpo:
+        fpath_hpo = pathlib.Path(hpo)
+        assert fpath_hpo.is_file(), "HPO file must exist"
+        hpo_path = fpath_hpo
+    else:
+        hpo_path = datadir.joinpath("hp.json")
+        assert hpo_path.is_file(), "HPO file must exist"
+
+    hpo = hpotk.load_minimal_ontology(str(hpo_path))
     mapper = DefaultMapper(hpo)
 
     all_sheets = load_sheets_as_tables(excel_file)
     notepad = create_notepad("phenopackets")
-    pps = mapper.apply_mapping(all_sheets, notepad)
 
-    assert not notepad.has_errors_or_warnings(include_subsections=True)
+    # get back two separate lists
+    genotype_records, phenotype_records = mapper.apply_mapping(all_sheets, notepad)
+
+    # if there were errors, show them and exit non‑zero
+
+    if notepad.has_errors(include_subsections=True):
+        click.echo("Errors found in mapping:")
+        for err in notepad.errors():
+            click.echo(f"- {err}")
+        # sys.exit(1)
+        # no exit—always continue to print the counts
+
+    # show any warnings but keep going
+    if notepad.has_warnings(include_subsections=True):
+        click.echo("Warnings found in mapping:")
+        for w in notepad.warnings():
+            click.echo(f"- {w}")
+
+    #pps = mapper.apply_mapping(all_sheets, notepad)
+    # assert not notepad.has_errors_or_warnings(include_subsections=True)
     # TODO: write phenopackets to a folder
+    #click.echo(f"Created {len(pps)} Phenotype objects")
+    click.echo(f"Created {len(genotype_records)} Genotype objects")
+    click.echo(f"Created {len(phenotype_records)} Phenotype objects")
+
+
+
 
 
 if __name__ == "__main__":

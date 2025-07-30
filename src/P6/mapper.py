@@ -1,5 +1,5 @@
 import abc
-import click
+# ruff removed: click
 import hpotk
 import pandas as pd
 import re

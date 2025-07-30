@@ -7,7 +7,7 @@ and normalizes numeric HPO IDs and timestamps.
 import click
 import hpotk
 import pathlib
-import sys
+# ruff removed: sys
 
 import requests
 import typing
@@ -49,7 +49,7 @@ def download(d: str, hpo_version: typing.Optional[str]):
     url = (
         f"https://github.com/obophenotype/human-phenotype-ontology/"
         f"releases/download/{tag}/hp.json"
-        )
+    )
     click.echo(f"Downloading HPO release {tag} …")
     resp = requests.get(url)
     resp.raise_for_status()
@@ -107,12 +107,17 @@ def parse_excel(excel_file: str, d: str, hpo: typing.Optional[str] = None):
         for w in notepad.warnings():
             click.echo(f"- {w}")
 
-    #pps = mapper.apply_mapping(all_sheets, notepad)
+    # pps = mapper.apply_mapping(all_sheets, notepad)
     # assert not notepad.has_errors_or_warnings(include_subsections=True)
     # TODO: write phenopackets to a folder
-    #click.echo(f"Created {len(pps)} Phenotype objects")
+    # click.echo(f"Created {len(pps)} Phenotype objects")
 
-    base = pathlib.Path.cwd() / "phenopacket-from-excel" / datetime.now().strftime("%Y%m%dT%H%M%S") / "phenopackets"
+    base = (
+        pathlib.Path.cwd()
+        / "phenopacket-from-excel"
+        / datetime.now().strftime("%Y%m%dT%H%M%S")
+        / "phenopackets"
+    )
     base.mkdir(parents=True, exist_ok=True)
     total = 0
     for rec in genotype_records + phenotype_records:
@@ -131,9 +136,6 @@ def parse_excel(excel_file: str, d: str, hpo: typing.Optional[str] = None):
     click.echo(f"Wrote {total} phenopacket files to {base}")
     click.echo(f"Created {len(genotype_records)} Genotype objects")
     click.echo(f"Created {len(phenotype_records)} Phenotype objects")
-
-
-
 
 
 if __name__ == "__main__":

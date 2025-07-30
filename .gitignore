@@ -210,3 +210,8 @@ scripts/.DS_Store
 /.idea/modules.xml
 /.idea/inspectionProfiles/profiles_settings.xml
 /.idea/P6.iml
+
+
+# Files generated from P6:
+/phenopacket-from-excel/
+/phenopacket-from-excel/*

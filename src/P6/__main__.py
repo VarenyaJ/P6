@@ -29,6 +29,7 @@ def main():
 @main.command(name="download")
 @click.option("--d", default="data", type=click.Path(exists=True))
 @click.option("--hpo-version", default=None, type=typing.Optional[str])
+# TODO: test getting different versions
 def download(d: str, hpo_version: typing.Optional[str]):
     # TODO: download an HPO
     """

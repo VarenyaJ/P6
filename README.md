@@ -76,12 +76,12 @@ A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing g
 
 Fetch the latest release into data/:
 ```bash
-p6 download --d data
+p6 download --d tests/data
 ```
 
 Fetch a specific release tag (e.g. v2025-03-03 or 2025-03-03):
 ```bash
-p6 download --d data --hpo-version 2025-03-03
+p6 download --d tests/data --hpo-version 2025-03-03
 ```
 
 After running, you’ll have `data/hp.json`.
@@ -90,12 +90,12 @@ After running, you’ll have `data/hp.json`.
 
 With your HPO JSON in place, run:
 ```bash
-p6 parse-excel path/to/your_workbook.xlsx --d data
+p6 parse-excel path/to/your_workbook.xlsx --d tests/data
 ```
 
 Or explicitly point at an HPO file:
 ```bash
-p6 parse-excel path/to/your_workbook.xlsx --d data --hpo data/hp.json
+p6 parse-excel path/to/your_workbook.xlsx --d tests/data --hpo tests/data/hp.json
 ```
 
 Resulting phenopacket files will be under:

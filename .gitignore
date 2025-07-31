@@ -218,3 +218,4 @@ scripts/.DS_Store
 /tests/data/hp.json.DS_Store
 tests/.DS_Store
 tests/data/.DS_Store
+/tests/data/hp.json

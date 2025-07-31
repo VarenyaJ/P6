@@ -49,7 +49,7 @@ def test_parse_excel_creates_records(sample_xlsx_path, decompressed_hpo):
     # Use the decompressed HPO file path in the command
     result = runner.invoke(
         main,
-        ["parse-excel", sample_xlsx_path, "--d", data_dir, "--hpo", decompressed_hpo],
+        ["parse-excel", "-e", sample_xlsx_path, "--custom-hpo", decompressed_hpo],
     )
     # it should exit cleanly
     assert result.exit_code == 0, result.output

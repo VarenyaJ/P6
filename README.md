@@ -24,7 +24,7 @@ A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing g
 - **Download**: fetch the latest or a specific `hp.json` release from GitHub  
 - **Parse**: autodetect genotype vs phenotype sheets in any Excel workbook  
 - **Normalize**: clean up column names, HPO IDs, timestamps, and data types  
-- **Generate**: emit individual `.pb` Phenopacket files, one per record (will change the file extension later)
+- **Generate**: emit individual Phenopacket files, one per record (will change the file extension later)
 
 ## Installation
 
@@ -74,28 +74,19 @@ A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing g
 
 ### Download HPO JSON
 
-Fetch the latest release into data/:
+Fetch the latest release into `tests/data/` (the default directory):
 ```bash
-p6 download --d tests/data
+p6 download
 ```
 
-Fetch a specific release tag (e.g. v2025-03-03 or 2025-03-03):
-```bash
-p6 download --d tests/data --hpo-version 2025-03-03
-```
+After running, you’ll have `tests/data/hp.json`.
 
-After running, you’ll have `data/hp.json`.
 
 ### Parse Excel to Phenopackets
 
-With your HPO JSON in place, run:
+With your HPO JSON in place at `tests/data/hp.json`, run:
 ```bash
-p6 parse-excel path/to/your_workbook.xlsx --d tests/data
-```
-
-Or explicitly point at an HPO file:
-```bash
-p6 parse-excel path/to/your_workbook.xlsx --d tests/data --hpo tests/data/hp.json
+p6 parse-excel -e tests/data/Sydney_Python_transformation.xlsx
 ```
 
 Resulting phenopacket files will be under:
@@ -107,23 +98,28 @@ phenopacket-from-excel/$(date "+%Y-%m-%d_%H-%M-%S")/phenopackets/
 
 ### p6 download
 
-Download a specific or the latest HPO JSON release into a directory.
-
-Usage: `p6 download [OPTIONS]`
+Usage:
+```markdown
+p6 download [OPTIONS]
 
 Options:
-```markdown
-    --d PATH                Target data directory (default: data)
-    --hpo-version TEXT      HPO release tag, e.g. 2025-03-03 or v2025-03-03
-    --help                  Show this message and exit.
+    -d, --data-path PATH    where to save HPO JSON (default: tests/data)
+    -v, --hpo-version TEXT  exact HPO release tag (e.g. 2025-03-03 or v2025-03-03)
+    --help                  Show this help message and exit.
 ```
 
 Examples:
+
+Fetch a specific release tag (e.g. v2025-03-03 or 2025-03-03) into `tests/data/` (the default directory):
 ```bash
-p6 download
-p6 download --d tests/data
-p6 download --hpo-version v2025-01-16
-p6 download --d ~/hpo --hpo-version 2024-12-12
+p6 download -v 2025-03-03
+p6 download --hpo-version 2025-03-03
+```
+
+Fetch a specific release tag (e.g. v2025-03-03 or 2025-03-03) into a custom directory:
+```bash
+p6 download -d src/P6 -v 2025-03-03
+p6 download --data-path src/P6 --hpo-version 2025-03-03
 ```
 
 ### p6 parse-excel
@@ -132,22 +128,18 @@ Read an Excel workbook, classify sheets, normalize fields, and emit Phenopacket 
 
 Usage: `p6 parse-excel [OPTIONS] EXCEL_FILE`
 
-Arguments:
-```markdown
-    EXCEL_FILE              Path to the Excel workbook.
-```
-
 Options:
 ```markdown
-    --d PATH                Data directory containing hp.json (default: data)
-    --hpo PATH              Path to an HPO JSON file (overrides --d)
+    -e, --excel-path FILE    path to the Excel workbook  [required]
+    -hpo, --custom-hpo FILE  path to a custom HPO JSON file (defaults to `tests/data/hp.json`)
     --help                  Show this message and exit.
 ```
 
 Example:
+
+Explicitly point at a custom HPO file:
 ```bash
-p6 parse-excel tests/data/Sydney_Python_transformation.xlsx \
-  --d tests/data --hpo tests/data/hp.v2024-04-26.json.gz
+p6 parse-excel -e tests/data/Sydney_Python_transformation.xlsx -hpo src/P6/hp.json
 ```
 
 ## Development & Testing

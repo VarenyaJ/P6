@@ -1,4 +1,5 @@
 import abc
+
 # ruff removed: click
 import hpotk
 import pandas as pd
@@ -70,7 +71,7 @@ class DefaultMapper(TableMapper):
         self._hpo = hpo
 
     def apply_mapping(
-            self, tables: dict[str, pd.DataFrame], notepad: Notepad
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad
     ) -> tuple[list[Genotype], list[Phenotype]]:
         genotype_records: list[Genotype] = []
         phenotype_records: list[Phenotype] = []
@@ -84,16 +85,21 @@ class DefaultMapper(TableMapper):
             if is_genotype_sheet == is_phenotype_sheet:
                 # ambiguous sheet should give a warning instead of an error
                 notepad.add_warning(
-                    f"⚠ Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype")
+                    f"⚠ Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype"
+                )
                 continue
 
             # rename the former-index column
             working = self._prepare_sheet(df, is_genotype_sheet)
 
             if is_genotype_sheet:
-                genotype_records.extend(self._map_genotype(sheet_name, working, notepad))
+                genotype_records.extend(
+                    self._map_genotype(sheet_name, working, notepad)
+                )
             else:
-                phenotype_records.extend(self._map_phenotype(sheet_name, working, notepad))
+                phenotype_records.extend(
+                    self._map_phenotype(sheet_name, working, notepad)
+                )
 
         return genotype_records, phenotype_records
 
@@ -105,21 +111,35 @@ class DefaultMapper(TableMapper):
         return working.rename(columns={original: column_id})
 
     def _map_genotype(
-            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
     ) -> list[Genotype]:
         records: list[Genotype] = []
         for idx, row in df.iterrows():
             # handle slash‑separated zygosity and inheritance
-            list_of_zygosity_types = [z.strip().lower() for z in str(row["zygosity"]).split("/")]
-            list_of_inheritance_types = [i.strip().lower() for i in str(row["inheritance"]).split("/")]
-            for zygosity_type, inheritance_type in zip(list_of_zygosity_types, list_of_inheritance_types):
+            list_of_zygosity_types = [
+                z.strip().lower() for z in str(row["zygosity"]).split("/")
+            ]
+            list_of_inheritance_types = [
+                i.strip().lower() for i in str(row["inheritance"]).split("/")
+            ]
+            for zygosity_type, inheritance_type in zip(
+                list_of_zygosity_types, list_of_inheritance_types
+            ):
                 if zygosity_type not in ZYGOSITY_MAP:
-                    notepad.add_error(f"Sheet {sheet_name!r}: Unrecognized zygosity code {zygosity_type!r}")
+                    notepad.add_error(
+                        f"Sheet {sheet_name!r}: Unrecognized zygosity code {zygosity_type!r}"
+                    )
                 if inheritance_type not in INHERITANCE_MAP:
-                    notepad.add_error(f"Sheet {sheet_name!r}: Unrecognized inheritance code {inheritance_type!r}")
+                    notepad.add_error(
+                        f"Sheet {sheet_name!r}: Unrecognized inheritance code {inheritance_type!r}"
+                    )
                 # allow missing/NaN contact_email → substitute dummy
                 raw_email = row["contact_email"]
-                contact_email = ("unknown@example.com" if pd.isna(raw_email) else str(raw_email).strip())
+                contact_email = (
+                    "unknown@example.com"
+                    if pd.isna(raw_email)
+                    else str(raw_email).strip()
+                )
                 kwargs = {
                     "genotype_patient_ID": str(row["genotype_patient_ID"]),
                     "contact_email": contact_email,
@@ -143,7 +163,7 @@ class DefaultMapper(TableMapper):
         return records
 
     def _map_phenotype(
-            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
     ) -> list[Phenotype]:
         records: list[Phenotype] = []
         for idx, row in df.iterrows():

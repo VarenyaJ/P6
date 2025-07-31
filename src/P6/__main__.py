@@ -3,6 +3,7 @@ Command‑line interface for P6 toolkit.
 Now determines sheet type by presence of multiple required key columns,
 and normalizes numeric HPO IDs and timestamps.
 """
+
 import click
 import hpotk
 import pathlib
@@ -26,8 +27,21 @@ def main():
 
 
 @main.command(name="download")
-@click.option("-d", "--data-path", "data_dir", default="tests/data", type=click.Path(exists=True), help="where to save HPO JSON (default: tests/data)")
-@click.option("-v", "--hpo-version", default=None, type=str, help="exact HPO release tag (e.g. 2025-03-03 or v2025-03-03)")
+@click.option(
+    "-d",
+    "--data-path",
+    "data_dir",
+    default="tests/data",
+    type=click.Path(exists=True),
+    help="where to save HPO JSON (default: tests/data)",
+)
+@click.option(
+    "-v",
+    "--hpo-version",
+    default=None,
+    type=str,
+    help="exact HPO release tag (e.g. 2025-03-03 or v2025-03-03)",
+)
 def download(data_dir: str, hpo_version: typing.Optional[str]):
     # TODO: download an HPO
     """
@@ -62,8 +76,21 @@ def download(data_dir: str, hpo_version: typing.Optional[str]):
 
 
 @main.command(name="parse-excel")
-@click.option("-e", "--excel-path", "excel_file", required=True, type=click.Path(exists=True, dir_okay=False), help="path to the Excel workbook")
-@click.option("-hpo", "--custom-hpo", "hpo_path", type=click.Path(exists=True, dir_okay=False), help="path to a custom HPO JSON file (defaults to tests/data/hp.json)")
+@click.option(
+    "-e",
+    "--excel-path",
+    "excel_file",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="path to the Excel workbook",
+)
+@click.option(
+    "-hpo",
+    "--custom-hpo",
+    "hpo_path",
+    type=click.Path(exists=True, dir_okay=False),
+    help="path to a custom HPO JSON file (defaults to tests/data/hp.json)",
+)
 def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None):
     """
     Read each sheet, check column order, then:

@@ -9,6 +9,7 @@ from P6.__main__ import main
 
 # ruff removed: pytest, gzip, tempfile, os
 
+
 @pytest.fixture(scope="session", autouse=True)
 def verify_hpo_file():
     # Ensure HPO file exists before running any tests
@@ -44,12 +45,11 @@ def test_parse_excel_creates_records(sample_xlsx_path, decompressed_hpo):
     asserts that it reports nonzero Genotype & Phenotype counts.
     """
     runner = CliRunner()
-    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    # data_dir = os.path.join(os.path.dirname(__file__), "data")
 
     # Use the decompressed HPO file path in the command
     result = runner.invoke(
-        main,
-        ["parse-excel", "-e", sample_xlsx_path, "--custom-hpo", decompressed_hpo],
+        main, ["parse-excel", "-e", sample_xlsx_path, "--custom-hpo", decompressed_hpo]
     )
     # it should exit cleanly
     assert result.exit_code == 0, result.output

@@ -219,3 +219,4 @@ scripts/.DS_Store
 tests/.DS_Store
 tests/data/.DS_Store
 /tests/data/hp.json
+/src/P6/hp.json

@@ -15,6 +15,7 @@ import typing
 from stairval.notepad import create_notepad
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
 from datetime import datetime
+from google.protobuf.json_format import MessageToJson
 
 from .loader import load_sheets_as_tables
 from .mapper import DefaultMapper
@@ -28,7 +29,7 @@ def main():
 
 @main.command(name="download")
 @click.option("--d", default="data", type=click.Path(exists=True))
-@click.option("--hpo-version", default=None, type=typing.Optional[str])
+@click.option("--hpo-version", default=None, type=str, help="exact HPO release tag (e.g. 2025-03-03) or with leading ‘v’")
 # TODO: test getting different versions
 def download(d: str, hpo_version: typing.Optional[str]):
     # TODO: download an HPO
@@ -113,10 +114,12 @@ def parse_excel(excel_file: str, d: str, hpo: typing.Optional[str] = None):
     # TODO: write phenopackets to a folder
     # click.echo(f"Created {len(pps)} Phenotype objects")
 
+    # use YYYY-MM-DD_HH-MM-SS for human-readable dirs
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     base = (
         pathlib.Path.cwd()
         / "phenopacket-from-excel"
-        / datetime.now().strftime("%Y%m%dT%H%M%S")
+        / timestamp
         / "phenopackets"
     )
     base.mkdir(parents=True, exist_ok=True)
@@ -130,9 +133,11 @@ def parse_excel(excel_file: str, d: str, hpo: typing.Optional[str] = None):
         else:
             pkt.id = f"phenotype-{rec.phenotype_patient_ID}"
         # TODO: Look if we can populate other fields here, e.g. observations, units, etc.
-        fn = base / f"{pkt.id}.pb"
-        with open(fn, "wb") as out_f:
-            out_f.write(pkt.SerializeToString())
+        # write as JSON instead of raw .pb
+        fn = base / f"{pkt.id}.json"
+        with open(fn, "w", encoding="utf-8") as out_f:
+            # serialize to JSON text
+            out_f.write(MessageToJson(pkt))
         total += 1
     click.echo(f"Wrote {total} phenopacket files to {base}")
     click.echo(f"Created {len(genotype_records)} Genotype objects")

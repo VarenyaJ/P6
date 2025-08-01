@@ -179,7 +179,7 @@ cython_debug/
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
 #  and can be added to the global gitignore or merged into this file. However, if you prefer,
 #  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
+.vscode/
 
 # Ruff stuff:
 .ruff_cache/
@@ -207,3 +207,18 @@ scripts/.DS_Store
 /.idea/vcs.xml
 /.idea/workspace.xml
 /.idea/misc.xml
+/.idea/modules.xml
+/.idea/inspectionProfiles/profiles_settings.xml
+/.idea/P6.iml
+
+
+# Files generated from P6:
+/phenopacket-from-excel/
+/phenopacket-from-excel/*
+phenopacket_from_excel/
+phenopacket_from_excel/*
+/tests/data/hp.json.DS_Store
+tests/.DS_Store
+tests/data/.DS_Store
+/tests/data/hp.json
+/src/P6/hp.json

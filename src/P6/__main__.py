@@ -6,7 +6,7 @@ and normalizes numeric HPO IDs and timestamps.
 
 import click
 import hpotk
-import pandas as pd # Not needed for Pandas_Workaround, i.e. don't call declare or call "_read_sheets" at all, just use `tables = load_sheets_as_tables(excel_file)` which only needs `from .loader import load_sheets_as_tables`
+import pandas as pd  # Not needed for Pandas_Workaround, i.e. don't call declare or call "_read_sheets" at all, just use `tables = load_sheets_as_tables(excel_file)` which only needs `from .loader import load_sheets_as_tables`
 import pathlib
 import requests
 import sys
@@ -136,7 +136,9 @@ def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None):
     _write_phenopackets(records_by_patient, generated_phenopacket_output_dir)
 
     # 9) Final summary
-    click.echo(f"Wrote {len(records_by_patient)} phenopacket files to {generated_phenopacket_output_dir}")
+    click.echo(
+        f"Wrote {len(records_by_patient)} phenopacket files to {generated_phenopacket_output_dir}"
+    )
     click.echo(f"Created {len(genotype_records)} Genotype objects")
     click.echo(f"Created {len(phenotype_records)} Phenotype objects")
 
@@ -178,7 +180,7 @@ def _report_issues(notepad):
 
 
 def _group_records_by_patient(
-        genotype_records: list, phenotype_records: list
+    genotype_records: list, phenotype_records: list
 ) -> dict[str, dict[str, list]]:
     # Group genotype & phenotype records by patient ID
     records = defaultdict(lambda: {"genotype_records": [], "phenotype_records": []})
@@ -192,13 +194,16 @@ def _group_records_by_patient(
 def _prepare_output_dir() -> pathlib.Path:
     # use YYYY-MM-DD_HH-MM-SS for human-readable timestamps
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    phenopacket_from_excel_output_dir = pathlib.Path.cwd() / "phenopacket_from_excel" / timestamp / "phenopackets"
+    phenopacket_from_excel_output_dir = (
+        pathlib.Path.cwd() / "phenopacket_from_excel" / timestamp / "phenopackets"
+    )
     phenopacket_from_excel_output_dir.mkdir(parents=True, exist_ok=True)
     return phenopacket_from_excel_output_dir
 
 
 def _write_phenopackets(
-        records_by_patient: dict[str, dict[str, list]], generated_phenopacket_output_dir: pathlib.Path
+    records_by_patient: dict[str, dict[str, list]],
+    generated_phenopacket_output_dir: pathlib.Path,
 ):
     # Build and write one Phenopacket per patient
     for patient_id, patient_data in records_by_patient.items():
@@ -216,7 +221,9 @@ def _write_phenopackets(
 
         # 3b) Add genotype interpretations
         # Genotypes → Interpretation → Diagnosis → GenomicInterpretation
-        for interpretation_index, genotype_record in enumerate(patient_data["genotype_records"]):
+        for interpretation_index, genotype_record in enumerate(
+            patient_data["genotype_records"]
+        ):
             # Create a new Interpretation entry (must set id and progress_status)
             interpretation = phenopacket.interpretations.add()
             interpretation.id = f"{patient_id}-interpretation-{interpretation_index}"
@@ -247,7 +254,9 @@ def _write_phenopackets(
             # expr.value = genotype_record.hgvsg
 
         # 3d) Serialize to JSON
-        generated_phenopacket_output_path = generated_phenopacket_output_dir / f"{patient_id}.json"
+        generated_phenopacket_output_path = (
+            generated_phenopacket_output_dir / f"{patient_id}.json"
+        )
         with open(generated_phenopacket_output_path, "w", encoding="utf-8") as out_f:
             out_f.write(MessageToJson(phenopacket))
 

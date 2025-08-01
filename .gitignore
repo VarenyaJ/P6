@@ -215,6 +215,8 @@ scripts/.DS_Store
 # Files generated from P6:
 /phenopacket-from-excel/
 /phenopacket-from-excel/*
+phenopacket_from_excel/
+phenopacket_from_excel/*
 /tests/data/hp.json.DS_Store
 tests/.DS_Store
 tests/data/.DS_Store

@@ -11,6 +11,7 @@ import requests
 import sys
 import typing
 
+from collections import defaultdict
 from datetime import datetime
 from google.protobuf.json_format import MessageToJson
 from stairval.notepad import create_notepad
@@ -103,14 +104,14 @@ def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None):
     if hpo_path:
         hpo_file = pathlib.Path(hpo_path)
     else:
-        hpo_file = hpo_file = pathlib.Path("tests/data") / "hp.json"
+        hpo_file = pathlib.Path("tests/data") / "hp.json"
     if not hpo_file.is_file():
         click.echo(f"Error: HPO file not found at {hpo_file}", err=True)
         sys.exit(1)
 
     # load ontology & mapper
-    hpo = hpotk.load_minimal_ontology(str(hpo_file))
-    mapper = DefaultMapper(hpo)
+    ontology = hpotk.load_minimal_ontology(str(hpo_file))
+    mapper = DefaultMapper(ontology)
 
     # read all sheets
     all_sheets = load_sheets_as_tables(excel_file)
@@ -140,27 +141,77 @@ def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None):
 
     # write genotype and phenotype records out as JSON
     # use YYYY-MM-DD_HH-MM-SS for human-readable timestamps
+    # Group by Patient
+    # 1) Group all genotype and phenotype records by patient ID
+    records_by_patient: dict[str, dict[str, list]] = defaultdict(
+        lambda: {"genotypes": [], "phenotypes": []}
+    )
+    for genotype in genotype_records:
+        patient_id = genotype.genotype_patient_ID
+        records_by_patient[patient_id]["genotypes"].append(genotype)
+
+    for phenotype in phenotype_records:
+        patient_id = phenotype.phenotype_patient_ID
+        records_by_patient[patient_id]["phenotypes"].append(phenotype)
+
+    # 2) Prepare a timestamped output directory
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    base = pathlib.Path.cwd() / "phenopacket-from-excel" / timestamp / "phenopackets"
-    base.mkdir(parents=True, exist_ok=True)
+    output_dir = pathlib.Path.cwd() / "phenopacket-from-excel" / timestamp / "phenopackets"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    total = 0
-    for rec in genotype_records + phenotype_records:
-        # one protobuffer per record
-        pkt = Phenopacket()
-        # every phenopacket needs at least an ID
-        if hasattr(rec, "genotype_patient_ID"):
-            pkt.id = f"genotype-{rec.genotype_patient_ID}"
-        else:
-            pkt.id = f"phenotype-{rec.phenotype_patient_ID}"
-        # TODO: Look if we can populate other fields here, e.g. observations, units, etc.
+    # 3) Build and write one Phenopacket per patient
+    for patient_id, patient_data in records_by_patient.items():
+        phenopacket = Phenopacket()
+        phenopacket.id = patient_id
+        phenopacket.subject.id = patient_id
 
-        fn = base / f"{pkt.id}.json"
-        with open(fn, "w", encoding="utf-8") as out_f:
-            # serialize to JSON text
-            out_f.write(MessageToJson(pkt))
-        total += 1
-    click.echo(f"Wrote {total} phenopacket files to {base}")
+        # TODO: revisit with Daniel to also set feature.onset and feature.resolution using TimeElement
+
+        # 3a) Add HPO-based phenotypic features
+        for phenotype in patient_data["phenotypes"]:
+            feature = phenopacket.phenotypic_features.add()
+            feature.type.id = phenotype.HPO_ID
+            # mark as excluded if status is False
+            if not phenotype.status:
+                feature.excluded = True
+
+        # 3b) Add variant interpretations from genotype records.
+        # Genotypes → Interpretation → Diagnosis → GenomicInterpretation
+        for interpretation_index, genotype_record in enumerate(patient_data["genotypes"]):
+            # Create a new Interpretation entry (must set id and progress_status)
+            interpretation = phenopacket.interpretations.add()
+            interpretation.id = f"{patient_id}-interp-{interpretation_index}"  # 0-based index
+            interpretation.progress_status = interpretation.ProgressStatus.COMPLETED  # correct enum
+
+            # each Interpretation has a `diagnosis` submessage (no `id` field)
+            diagnosis = interpretation.diagnosis
+
+
+            # inside Diagnosis, add GenomicInterpretation
+            genomic_interpretation_entry = diagnosis.genomic_interpretations.add()
+            genomic_interpretation_entry.subject_or_biosample_id = patient_id
+            genomic_interpretation_entry.interpretation_status = genomic_interpretation_entry.InterpretationStatus.CONTRIBUTORY
+
+            # now fill in the VariationDescriptor
+            # TODO: set this up later
+            # Omit setting gene_context for now.
+            # variation_descriptor = genomic_interpretation_entry.variant_interpretation.variation_descriptor
+            # we can also set variation_descriptor.gene_context and variation_descriptor.allelic_state here then serialize out as before
+            # variation_descriptor.gene_context.gene_symbol = genotype_record.gene_symbol
+            # variation_descriptor.allelic_state = variation_descriptor.AllelicState.Value(genotype_record.zygosity.upper())
+
+            # TODO: when ready, add an Expression.HGVS here
+            # Record the HGVS genomic notation as an Expression
+            # expr = variation_descriptor.expressions.add()
+            # expr.syntax = Phenopacket.Diagnosis.GenomicInterpretation.VariantInterpretation.VariationDescriptor.Expression.HGVS
+            # expr.value = genotype_record.hgvsg
+
+        # 3d) Serialize to a single JSON file per patient
+        out_path = output_dir / f"{patient_id}.json"
+        with open(out_path, "w", encoding="utf-8") as out_f:
+            out_f.write(MessageToJson(phenopacket))
+
+    click.echo(f"Wrote {len(records_by_patient)} phenopacket files to {output_dir}")
     click.echo(f"Created {len(genotype_records)} Genotype objects")
     click.echo(f"Created {len(phenotype_records)} Phenotype objects")
 

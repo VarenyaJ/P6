@@ -91,7 +91,7 @@ p6 parse-excel -e tests/data/Sydney_Python_transformation.xlsx
 
 Resulting phenopacket files will be under:
 ```plaintext
-phenopacket-from-excel/$(date "+%Y-%m-%d_%H-%M-%S")/phenopackets/
+phenopacket_from_excel/$(date "+%Y-%m-%d_%H-%M-%S")/phenopackets/
 ```
 
 ## CLI Reference

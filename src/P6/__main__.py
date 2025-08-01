@@ -6,6 +6,7 @@ and normalizes numeric HPO IDs and timestamps.
 
 import click
 import hpotk
+#import pandas as pd
 import pathlib
 import requests
 import sys
@@ -108,7 +109,8 @@ def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None):
     mapper = DefaultMapper(ontology)
 
     # 3) Read all sheets into DataFrames
-    tables = _read_sheets(excel_file)
+    #tables = _read_sheets(excel_file)
+    tables = load_sheets_as_tables(excel_file)
 
     # 4) Apply mapping to get raw records and collect issues
     notepad = create_notepad("phenopackets")
@@ -155,9 +157,9 @@ def _load_ontology(hpo_file: str) -> hpotk.MinimalOntology:
     return hpotk.load_minimal_ontology(hpo_file)
 
 
-def _read_sheets(excel_file: str) -> dict[str, pd.DataFrame]:
-    # read each worksheet into a DataFrame
-    return load_sheets_as_tables(excel_file)
+#def _read_sheets(excel_file: str) -> dict[str, pd.DataFrame]:
+    #    # read each worksheet into a DataFrame
+    #return load_sheets_as_tables(excel_file)
 
 
 def _report_issues(notepad):

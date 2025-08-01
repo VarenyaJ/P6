@@ -6,7 +6,7 @@ and normalizes numeric HPO IDs and timestamps.
 
 import click
 import hpotk
-#import pandas as pd
+import pandas as pd # Not needed for Pandas_Workaround, i.e. don't call declare or call "_read_sheets" at all, just use `tables = load_sheets_as_tables(excel_file)` which only needs `from .loader import load_sheets_as_tables`
 import pathlib
 import requests
 import sys
@@ -109,8 +109,9 @@ def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None):
     mapper = DefaultMapper(ontology)
 
     # 3) Read all sheets into DataFrames
-    #tables = _read_sheets(excel_file)
-    tables = load_sheets_as_tables(excel_file)
+    tables = _read_sheets(excel_file)
+    # tables = load_sheets_as_tables(excel_file)  # Just use this for Pandas_Workaround. Don't call declare or call "_read_sheets" at all. Just use `tables = load_sheets_as_tables(excel_file)` which only needs `from .loader import load_sheets_as_tables`
+    # TODO: Decide if it is better to implement `Pandas_Workaround` or just use Pandas
 
     # 4) Apply mapping to get raw records and collect issues
     notepad = create_notepad("phenopackets")
@@ -157,9 +158,10 @@ def _load_ontology(hpo_file: str) -> hpotk.MinimalOntology:
     return hpotk.load_minimal_ontology(hpo_file)
 
 
-#def _read_sheets(excel_file: str) -> dict[str, pd.DataFrame]:
-    #    # read each worksheet into a DataFrame
-    #return load_sheets_as_tables(excel_file)
+# Comment out this function and all uses to just get a Pandas_Workaround by only using the original `tables = load_sheets_as_tables(excel_file)`, which only depends on `from .loader import load_sheets_as_tables`
+def _read_sheets(excel_file: str) -> dict[str, pd.DataFrame]:
+    # read each worksheet into a DataFrame
+    return load_sheets_as_tables(excel_file)
 
 
 def _report_issues(notepad):

@@ -1,7 +1,7 @@
 import abc
-
 # ruff removed: click
 import hpotk
+from hpotk.validate import ObsoleteTermIdsValidator, PhenotypicAbnormalityValidator, AnnotationPropagationValidator, ValidationRunner
 import pandas as pd
 import re
 import typing
@@ -194,4 +194,97 @@ class DefaultMapper(TableMapper):
                     status=bool(row["status"]),
                 )
             )
+        return records
+
+
+    def _map_phenotype(
+            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[Phenotype]:
+        records: list[Phenotype] = []
+
+        # Collect every HPO ID in this sheet, so we can validate propagation later:
+        all_ids: list[hpotk.TermId] = []
+
+        for idx, row in df.iterrows():
+            hpo_cell = str(row["hpo_id"]).strip()
+            m = re.match(
+                r"""
+                ^\s*
+                (?P<label>.*?)              # anything
+                \s*                         # optional whitespace
+                \(?                         # optional "("
+                (?:HP:?)?(?P<digits>\d+)    # optional "HP", with optional ":", then the digits
+                \)?                         # optional ")"
+                \s*$
+                """,
+                hpo_cell,
+                re.VERBOSE | re.IGNORECASE, # flags for case-insensitive matching and to allow whitespace patterns
+            )
+            if not m:
+                notepad.add_error(
+                    f"Sheet {sheet_name!r}, row {idx}: cannot parse HPO term+ID from {hpo_cell!r}"
+                )
+                continue
+
+            raw_label = m.group("label").strip()
+            digits = m.group("digits")
+            curie = f"HP:{digits.zfill(7)}"
+            term_id = hpotk.TermId.from_curie(curie)
+
+            # 1) Normalize the date_of_observation
+            raw_date = row["date_of_observation"]
+            if isinstance(raw_date, (int, float)):
+                date_str = f"T{int(raw_date)}"
+            else:
+                s = str(raw_date).strip()
+                date_str = s if s.upper().startswith("T") else f"T{s}"
+
+            # 2) Append the Phenotype record
+            records.append(
+                Phenotype(
+                    phenotype_patient_ID=str(row["phenotype_patient_ID"]),
+                    HPO_ID=curie,
+                    date_of_observation=date_str,
+                    status=bool(row["status"]),
+                )
+            )
+
+            # 3) The IDs must exist in the ontology:
+            term = self._hpo.get_term(term_id)
+            if term is None:
+                notepad.add_error(f"Sheet {sheet_name!r}, row {idx}: HPO ID {curie!r} not found in ontology")
+                continue
+            else:
+                # only now record for batch‐validation
+                # all_ids.append(term_id)
+
+                # 4) If the term is obsolete, flag it:
+                if term.is_obsolete:
+                    replacements = ", ".join(str(all) for all in term.alt_term_ids)
+                    notepad.add_warning(f"Sheet {sheet_name!r}, row {idx}: {curie!r} is obsolete; use {replacements}")
+
+                # 5) If they gave a label, check that it matches (case-insensitive):
+                if raw_label and raw_label.lower() != term.name.lower():
+                    notepad.add_warning(
+                        f"Sheet {sheet_name!r}, row {idx}: label {raw_label!r} "
+                        f"does not match ontology name {term.name!r}"
+                    )
+
+        # Now validate the set of IDs
+        if all_ids:
+            validators = [
+                ObsoleteTermIdsValidator(self._hpo),
+                PhenotypicAbnormalityValidator(self._hpo),
+                AnnotationPropagationValidator(self._hpo),
+            ]
+            runner = ValidationRunner(validators=validators)
+            validation_runner = runner.validate_all(all_ids)
+
+            for issue in validation_runner.results:
+                message = f"Sheet {sheet_name!r}: {issue.message}"
+                if issue.level.name == "ERROR":
+                    notepad.add_error(message)
+                else:
+                    notepad.add_warning(message)
+
         return records

@@ -11,7 +11,7 @@ RENAME_MAP = {
     "chrom": "chromosome",
     # phenotype columns
     "hpo": "hpo_id",
-    "hpo_term": "hpo_id",   # also catch "HPO Term" → hpo_term → hpo_id
+    "hpo_term": "hpo_id",  # also catch "HPO Term" → hpo_term → hpo_id
     "timestamp": "date_of_observation",
 }
 

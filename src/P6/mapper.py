@@ -1,7 +1,13 @@
 import abc
+
 # ruff removed: click
 import hpotk
-from hpotk.validate import ObsoleteTermIdsValidator, PhenotypicAbnormalityValidator, AnnotationPropagationValidator, ValidationRunner
+from hpotk.validate import (
+    ObsoleteTermIdsValidator,
+    PhenotypicAbnormalityValidator,
+    AnnotationPropagationValidator,
+    ValidationRunner,
+)
 import pandas as pd
 import re
 import typing
@@ -196,9 +202,8 @@ class DefaultMapper(TableMapper):
             )
         return records
 
-
     def _map_phenotype(
-            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
     ) -> list[Phenotype]:
         records: list[Phenotype] = []
 
@@ -218,7 +223,8 @@ class DefaultMapper(TableMapper):
                 \s*$
                 """,
                 hpo_cell,
-                re.VERBOSE | re.IGNORECASE, # flags for case-insensitive matching and to allow whitespace patterns
+                re.VERBOSE
+                | re.IGNORECASE,  # flags for case-insensitive matching and to allow whitespace patterns
             )
             if not m:
                 notepad.add_error(
@@ -252,7 +258,9 @@ class DefaultMapper(TableMapper):
             # 3) The IDs must exist in the ontology:
             term = self._hpo.get_term(term_id)
             if term is None:
-                notepad.add_error(f"Sheet {sheet_name!r}, row {idx}: HPO ID {curie!r} not found in ontology")
+                notepad.add_error(
+                    f"Sheet {sheet_name!r}, row {idx}: HPO ID {curie!r} not found in ontology"
+                )
                 continue
             else:
                 # only now record for batch‐validation
@@ -261,7 +269,9 @@ class DefaultMapper(TableMapper):
                 # 4) If the term is obsolete, flag it:
                 if term.is_obsolete:
                     replacements = ", ".join(str(all) for all in term.alt_term_ids)
-                    notepad.add_warning(f"Sheet {sheet_name!r}, row {idx}: {curie!r} is obsolete; use {replacements}")
+                    notepad.add_warning(
+                        f"Sheet {sheet_name!r}, row {idx}: {curie!r} is obsolete; use {replacements}"
+                    )
 
                 # 5) If they gave a label, check that it matches (case-insensitive):
                 if raw_label and raw_label.lower() != term.name.lower():

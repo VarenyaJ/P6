@@ -1,87 +1,180 @@
 # P6
-Peter's Parse and Processing of PreGen Particulars via Pandas
+**Peter's Parse and Processing of Prenatal Particulars via Pandas**
 
-- **adapted from https://github.com/VarenyaJ/P5/tree/exp/prioritize-conda**
+A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing genotype/phenotype Excel workbooks, and producing [GA4GH Phenopackets](https://phenopacket-schema.readthedocs.io/en/latest/schema.html#version-2-0) as specified [here](https://phenopacket-schema.readthedocs.io/_/downloads/en/stable/pdf/).
 
-## Install Conda
+## Table of Contents
+
+1. [Features](#features)  
+2. [Prerequisites](#prerequisites)  
+3. [Installation](#installation)  
+4. [Quickstart](#quickstart)  
+   - [Download HPO JSON](#download-hpo-json)  
+   - [Parse Excel to Phenopackets](#parse-excel-to-phenopackets)  
+5. [CLI Reference](#cli-reference)  
+   - [`p6 download`](#p6-download)  
+   - [`p6 parse-excel`](#p6-parse-excel)  
+6. [Development & Testing](#development--testing)  
+7. [Contributing](#contributing)  
+8. [License](#license)  
+9. [Contact](#contact)
+
+## Features
+
+- **Download**: fetch the latest or a specific `hp.json` release from GitHub  
+- **Parse**: autodetect genotype vs phenotype sheets in any Excel workbook  
+- **Normalize**: clean up column names, HPO IDs, timestamps, and data types  
+- **Generate**: emit individual Phenopacket files, one per record (will change the file extension later)
+
+## Installation
+
+1.  **Clone** the repo:  
+    ```bash
+    git clone https://github.com/VarenyaJ/P6.git
+    cd P6
+    ```
+
+2.  (Recommended) Create a virtual environment (venv or Conda):
+    # === Simple Venv setup ===
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+    # === or with Conda ===
+    ```bash
+    conda env create -f requirements/environment.yml -y
+    conda activate P6
+    ```
+
+3.  Install via pip:
+    ```bash
+    python3 -m pip install -r requirements/requirements.txt .
+    ```
+
+4.  Verify the installation:
+    ```bash
+    p6 --help
+    ```
+    
+    You should see something like:
+    ```bash
+    Usage: p6 [OPTIONS] COMMAND [ARGS]...
+    
+      P6: Peter's Parse and Processing of Prenatal Particulars via Pandas.
+    
+    Options:
+      --help  Show this message and exit.
+    
+    Commands:
+      download    Download a specific or the latest HPO JSON release into...
+      parse-excel Read each sheet, check column order, then: - Identify as a...
+    ```
+
+## Quickstart
+
+### Download HPO JSON
+
+Fetch the latest release into `tests/data/` (the default directory):
 ```bash
-mkdir -p $HOME/miniconda3
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-<YOUR_SYSTEM>.sh -O $HOME/miniconda3/miniconda.sh
-bash $HOME/miniconda3/miniconda.sh -b -u -p $HOME/miniconda3
-#rm $HOME/miniconda3/miniconda.sh
-source $HOME/.bashrc
-source $HOME/miniconda3/bin/activate
-conda init --all
-conda --version
-conda info
+p6 download
 ```
 
+After running, you’ll have `tests/data/hp.json`.
 
-## Setup Conda (and optionally install Mamba)
+
+### Parse Excel to Phenopackets
+
+With your HPO JSON in place at `tests/data/hp.json`, run:
 ```bash
-# 1. Activate Conda for Shell
-source $HOME/.bashrc && source $HOME/miniconda3/bin/activate && source $HOME/.bashrc && conda init --all && conda --version && conda info && conda list envs && which conda && conda --version
-
-# 2. Setup Conda-Forge
-conda update -n base -c defaults conda && conda install -n base -c conda-forge mamba conda-lock && conda list --show-channel-urls
-
-# 3. Initialize conda
-eval "$(conda shell.bash hook)" || echo 'no conda :('
-
-# 4. OPTIONAL: Initialize mamba
-eval "$(mamba shell hook --shell bash)" || echo 'no mamba :('
+p6 parse-excel -e tests/data/Sydney_Python_transformation.xlsx
 ```
 
-## Setup Project
+Resulting phenopacket files will be under:
+```plaintext
+phenopacket_from_excel/$(date "+%Y-%m-%d_%H-%M-%S")/phenopackets/
+```
+
+## CLI Reference
+
+### p6 download
+
+Usage:
+```markdown
+p6 download [OPTIONS]
+
+Options:
+    -d, --data-path PATH    where to save HPO JSON (default: tests/data)
+    -v, --hpo-version TEXT  exact HPO release tag (e.g. 2025-03-03 or v2025-03-03)
+    --help                  Show this help message and exit.
+```
+
+Examples:
+
+Fetch a specific release tag (e.g. v2025-03-03 or 2025-03-03) into `tests/data/` (the default directory):
 ```bash
-cd $HOME
-git clone https://github.com/VarenyaJ/P6.git
-cd $HOME/P6/
-git checkout main
-
-# 1. Clear caches
-conda clean --all -y
-pip cache purge
-
-# 2. Remove old env
-conda deactivate
-conda env remove -n p6 -y
-
-# 3. Create new env
-conda env create -f requirements/environment.yml -n p6 -y || mamba env create -f requirements/environment.yml -n p6 -y
-
-# 4. TODO: Validate packages work with a little test
-conda activate p6
-python - <<EOF
-import phenopackets, hpo-toolkit, pandas
-print("OK:", phenopackets.__version__, hpo-toolkit.__version__, pandas.__version__)
-EOF
-
-# 4.5 TODO: Install and Verify Package
-pip install -e .
-python -c "import p6; print(p6.__version__)"
-sample --help
-
-pytest --maxfail=1 -q
+p6 download -v 2025-03-03
+p6 download --hpo-version 2025-03-03
 ```
 
-# TODO:
-
-### 5. Install lock tool & generate lock
-```
-conda install -n p6 -c conda-forge conda-lock -y || mamba install -n p6 -c conda-forge conda-lock -y
-conda-lock lock -f requirements/environment.yml \
- -p linux-64 -p osx-64 -p osx-arm64
-```
-
-### Create lock
+Fetch a specific release tag (e.g. v2025-03-03 or 2025-03-03) into a custom directory:
 ```bash
-conda env create --yes -f requirements/environment.yml || mamba env create --yes -f requirements/environment.yml
-conda-lock lock -f requirements/environment.yml -p linux-64 -p osx-64 -p win-64 --name p6
+p6 download -d src/P6 -v 2025-03-03
+p6 download --data-path src/P6 --hpo-version 2025-03-03
 ```
 
-### Commit the generated lock files and update them via:
-```bash
-conda env update --yes -f requirements/environment.yml || mamba env update --yes -f requirements/environment.yml
-conda-lock lock --update-lock-file
+### p6 parse-excel
+
+Read an Excel workbook, classify sheets, normalize fields, and emit Phenopacket protobuffers.
+
+Usage: `p6 parse-excel [OPTIONS] EXCEL_FILE`
+
+Options:
+```markdown
+    -e, --excel-path FILE    path to the Excel workbook  [required]
+    -hpo, --custom-hpo FILE  path to a custom HPO JSON file (defaults to `tests/data/hp.json`)
+    --help                  Show this message and exit.
 ```
+
+Example:
+
+Explicitly point at a custom HPO file:
+```bash
+p6 parse-excel -e tests/data/Sydney_Python_transformation.xlsx -hpo src/P6/hp.json
+```
+
+## Development & Testing
+
+Install dev requirements:
+```bash
+python3 -m pip install -r requirements/requirements.txt -r requirements/requirements_test.txt .
+```
+This will install `P6` along with the dependencies needed for the development.
+
+Run the full test suite:
+```bash
+pytest -q
+```
+
+Lint & type-check (via ruff and built-in assertions):
+```bash
+ruff check .
+ruff format .
+```
+
+## Contributing
+
+1. Fork the repo & create a feature branch
+2. Make your changes & add tests
+3. Ensure all tests pass & lint is clean
+4. Submit a pull request against main
+5. Please follow the AGPL-3.0 code of conduct.
+
+## License
+
+This project is licensed under the AGPL-3.0. See LICENSE for details.
+
+## Contact
+
+Varenya Jain
+varenyajj@gmail.com
+GitHub: @VarenyaJ

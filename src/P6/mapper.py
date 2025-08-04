@@ -2,7 +2,12 @@ import abc
 
 # ruff removed: click
 import hpotk
-from hpotk.validate import ObsoleteTermIdsValidator, PhenotypicAbnormalityValidator, AnnotationPropagationValidator, ValidationRunner
+from hpotk.validate import (
+    ObsoleteTermIdsValidator,
+    PhenotypicAbnormalityValidator,
+    AnnotationPropagationValidator,
+    ValidationRunner,
+)
 import pandas as pd
 import re
 import typing
@@ -186,10 +191,12 @@ class DefaultMapper(TableMapper):
                 \s*$
                 """,
                 hpo_cell,
-                re.VERBOSE | re.IGNORECASE
+                re.VERBOSE | re.IGNORECASE,
             )
             if not m:
-                notepad.add_error(f"Sheet {sheet_name!r}, row {idx}: Cannot parse HPO term+ID from {hpo_cell!r}")
+                notepad.add_error(
+                    f"Sheet {sheet_name!r}, row {idx}: Cannot parse HPO term+ID from {hpo_cell!r}"
+                )
                 continue
 
             raw_label = m.group("label").strip()
@@ -222,19 +229,24 @@ class DefaultMapper(TableMapper):
             # Validate ID against ontology
             term = self._hpo.get_term(term_id)
             if term is None:
-                notepad.add_warning(f"Skipping row {idx} in {sheet_name!r}: HPO ID {curie!r} not found in ontology")
+                notepad.add_warning(
+                    f"Skipping row {idx} in {sheet_name!r}: HPO ID {curie!r} not found in ontology"
+                )
                 continue
 
             # 4) If the term is obsolete, flag it:
             if term.is_obsolete:
                 replacements = ", ".join(str(t) for t in term.alt_term_ids)
-                notepad.add_warning(f"Sheet {sheet_name!r}, row {idx}: {curie!r} is obsolete; use {replacements}")
+                notepad.add_warning(
+                    f"Sheet {sheet_name!r}, row {idx}: {curie!r} is obsolete; use {replacements}"
+                )
 
             # 5) If they gave a label, check that it matches (case-insensitive):
             if raw_label and raw_label.lower() != term.name.lower():
                 notepad.add_warning(
                     f"Sheet {sheet_name!r}, row {idx}: label {raw_label!r} "
-                    f"does not match ontology name {term.name!r}")
+                    f"does not match ontology name {term.name!r}"
+                )
 
             # Only now record for batch‐validation
             all_ids.append(term_id)
@@ -251,7 +263,7 @@ class DefaultMapper(TableMapper):
             for issue in validation_runner.results:
                 msg = f"Sheet {sheet_name!r}: {issue.message}"
                 if issue.level.name == "ERROR":
-                        notepad.add_error(msg)
+                    notepad.add_error(msg)
                 else:
                     notepad.add_warning(msg)
 

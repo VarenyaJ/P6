@@ -258,8 +258,9 @@ def _write_phenopackets(
             variation_descriptor.gene_context.symbol = genotype_record.gene_symbol
             variation_descriptor.allelic_state.CopyFrom(
                 pps2.OntologyClass(
-                    id = "GENO:" + genotype_record.zygosity_code,  # or however you construct this
-                    label = genotype_record.zygosity
+                    id="GENO:"
+                    + genotype_record.zygosity_code,  # or however you construct this
+                    label=genotype_record.zygosity,
                 )
             )
 
@@ -276,7 +277,9 @@ def _write_phenopackets(
             try:
                 loc_ctx = variation_descriptor.location
                 # use the nested VariationDescriptor.Location enum
-                loc_ctx.interval.interval_type = (pps2.VariationDescriptor.Location.Interval.Type.EXACT)
+                loc_ctx.interval.interval_type = (
+                    pps2.VariationDescriptor.Location.Interval.Type.EXACT
+                )
                 loc_ctx.interval.start = genotype_record.start_position
                 loc_ctx.interval.end = genotype_record.end_position
                 loc_ctx.reference_sequence_id = genotype_record.chromosome
@@ -285,7 +288,7 @@ def _write_phenopackets(
                 variation_descriptor.reference = genotype_record.reference
                 variation_descriptor.alternate = genotype_record.alternate
             except AttributeError:
-            # some protobuffs give trouble when trying to expose location/alleles so just skip
+                # some protobuffs give trouble when trying to expose location/alleles so just skip
                 pass
 
             # TODO: when ready, add an Expression.HGVS here

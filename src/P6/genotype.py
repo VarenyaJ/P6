@@ -7,16 +7,29 @@ genomic variant entry, with validation of each attribute.
 
 import re
 from dataclasses import dataclass
-from typing import ClassVar, Dict, List, Optional
+# from typing import ClassVar, Dict, List, Optional
 
 # Patterns and allowed enums
 _VALID_ID = re.compile(r"^[A-Za-z0-9]+$")
 _EMAIL_PATTERN = re.compile(r"^[\w\.\+\-]+@[\w\.\-]+\.[A-Za-z]+$")
 _ALLOWED_CHROM_ENCODINGS = {"hgvs", "ucsc", "refseq", "ensembl", "ncbi", "ega"}
-_ALLOWED_ZYGOSITIES = {"compound_heterozygosity", "homozygous", "heterozygous", "hemizygous", "mosaic"}
+_ALLOWED_ZYGOSITIES = {
+    "compound_heterozygosity",
+    "homozygous",
+    "heterozygous",
+    "hemizygous",
+    "mosaic",
+}
 _ALLOWED_INHERITANCE_MODES = {"unknown", "inherited", "de_novo_mutation"}
 # Mapping from the normalized zygosity terms to Genotype Ontology codes
-_GENO_ALLELIC_STATE_CODES = {"heterozygous": "0000135", "homozygous": "0000134", "compound_heterozygosity": "0000191", "hemizygous": "0000136", "mosaic": "0000150"}
+_GENO_ALLELIC_STATE_CODES = {
+    "heterozygous": "0000135",
+    "homozygous": "0000134",
+    "compound_heterozygosity": "0000191",
+    "hemizygous": "0000136",
+    "mosaic": "0000150",
+}
+
 
 @dataclass
 class Genotype:
@@ -108,6 +121,7 @@ class Genotype:
             return _GENO_ALLELIC_STATE_CODES[self.zygosity]
         except KeyError:
             raise ValueError(f"No GENO code defined for zygosity {self.zygosity!r}")
+
 
 # Map our human‐readable zygosity → the GA4GH GENO codes
 # allelic_state_GENO_zygosity_codes: dict[str, str] = {"heterozygous": "0000135", "homozygous": "0000136", "mosaic": "0000539", "hemizygous": "0000144", "compound_heterozygosity": "0000140"}

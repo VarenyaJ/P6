@@ -33,8 +33,21 @@ def main():
 
 
 @main.command(name="audit-excel")
-@click.option("-e", "--excel-path", "excel_file", required=True, type=click.Path(exists=True, dir_okay=False), help="path to the Excel workbook")
-@click.option("-r", "--report-json", "report_json", is_flag=True, help="output audit report as JSON instead of table")
+@click.option(
+    "-e",
+    "--excel-path",
+    "excel_file",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="path to the Excel workbook",
+)
+@click.option(
+    "-r",
+    "--report-json",
+    "report_json",
+    is_flag=True,
+    help="output audit report as JSON instead of table",
+)
 def audit_excel(excel_file: str, report_json: bool):
     """
     Run a preprocessing audit on each sheet in the given workbook:
@@ -47,6 +60,7 @@ def audit_excel(excel_file: str, report_json: bool):
 
     # 2) Produce audit entries
     from .__main__ import preprocess
+
     entries = preprocess(tables)
 
     # 3) Render report
@@ -55,13 +69,14 @@ def audit_excel(excel_file: str, report_json: bool):
         payload = [
             {"step": e.step, "sheet": e.sheet, "level": e.level, "message": e.message}
             for e in entries
-       ]
+        ]
         click.echo(json.dumps(payload, indent=2))
     else:
         # table header
         click.echo(f"{'SHEET':20}  {'STEP':25}  {'LEVEL':8}  MESSAGE")
         for e in entries:
             click.echo(f"{e.sheet:20}  {e.step:25}  {e.level:8}  {e.message}")
+
 
 @main.command(name="download")
 @click.option(

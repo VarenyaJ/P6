@@ -6,6 +6,7 @@ and normalizes numeric HPO IDs and timestamps.
 
 import click
 import hpotk
+import json
 import pandas as pd  # Not needed for Pandas_Workaround, i.e. don't call declare or call "_read_sheets" at all, just use `tables = load_sheets_as_tables(excel_file)` which only needs `from .loader import load_sheets_as_tables`
 import pathlib
 import requests
@@ -30,6 +31,37 @@ def main():
     """P6: Peter's Parse and Processing of Prenatal Particulars via Pandas."""
     pass
 
+
+@main.command(name="audit-excel")
+@click.option("-e", "--excel-path", "excel_file", required=True, type=click.Path(exists=True, dir_okay=False), help="path to the Excel workbook")
+@click.option("-r", "--report-json", "report_json", is_flag=True, help="output audit report as JSON instead of table")
+def audit_excel(excel_file: str, report_json: bool):
+    """
+    Run a preprocessing audit on each sheet in the given workbook:
+        - header normalization
+        - sheet classification (genotype/phenotype/skip)
+        - variant‐column presence checks
+    """
+    # 1) Read sheets
+    tables = _read_sheets(excel_file)
+
+    # 2) Produce audit entries
+    from .__main__ import preprocess
+    entries = preprocess(tables)
+
+    # 3) Render report
+    if report_json:
+        # turn each AuditEntry into a serializable dict
+        payload = [
+            {"step": e.step, "sheet": e.sheet, "level": e.level, "message": e.message}
+            for e in entries
+       ]
+        click.echo(json.dumps(payload, indent=2))
+    else:
+        # table header
+        click.echo(f"{'SHEET':20}  {'STEP':25}  {'LEVEL':8}  MESSAGE")
+        for e in entries:
+            click.echo(f"{e.sheet:20}  {e.step:25}  {e.level:8}  {e.message}")
 
 @main.command(name="download")
 @click.option(

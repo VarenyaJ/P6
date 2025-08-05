@@ -64,7 +64,13 @@ INHERITANCE_MAP = {
 }
 
 # Check Variant column groups: allow either the full raw coordinates or any HGVS notation
-RAW_VARIANT_COLUMNS = {"chromosome", "start_position", "end_position", "reference", "alternate"}
+RAW_VARIANT_COLUMNS = {
+    "chromosome",
+    "start_position",
+    "end_position",
+    "reference",
+    "alternate",
+}
 HGVS_VARIANT_COLUMNS = {"hgvsg", "hgvsc", "hgvsp"}
 # minimal base columns to call something a genotype sheet (we bring the index in later)
 GENOTYPE_BASE_COLUMNS = {"contact_email", "phasing"}
@@ -76,6 +82,7 @@ class TableMapper(metaclass=abc.ABCMeta):
         self, tables: dict[str, pd.DataFrame], notepad: Notepad
     ) -> typing.Sequence[Phenopacket]:
         pass
+
 
 class DefaultMapper(TableMapper):
     def __init__(self, hpo: hpotk.MinimalOntology, strict_variants: bool = False):
@@ -98,7 +105,9 @@ class DefaultMapper(TableMapper):
             has_raw = RAW_VARIANT_COLUMNS.issubset(columns)
             has_hgvs = bool(HGVS_VARIANT_COLUMNS & columns)
             """Send each sheet to the right extractor and collect all records."""
-            is_genotype_sheet = (GENOTYPE_BASE_COLUMNS.issubset(columns) and (has_raw or has_hgvs))
+            is_genotype_sheet = GENOTYPE_BASE_COLUMNS.issubset(columns) and (
+                has_raw or has_hgvs
+            )
             is_phenotype_sheet = PHENOTYPE_KEY_COLUMNS.issubset(columns)
 
             if is_genotype_sheet == is_phenotype_sheet:
@@ -115,22 +124,27 @@ class DefaultMapper(TableMapper):
             working = self._prepare_sheet(df, is_genotype_sheet)
 
             if is_genotype_sheet:
-                genotype_records.extend(self._map_genotype(sheet_name, working, notepad))
+                genotype_records.extend(
+                    self._map_genotype(sheet_name, working, notepad)
+                )
             else:
-                phenotype_records.extend(self._map_phenotype(sheet_name, working, notepad))
+                phenotype_records.extend(
+                    self._map_phenotype(sheet_name, working, notepad)
+                )
 
         return genotype_records, phenotype_records
 
     def _check_hgvs_consistency(
-        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> None:
-        '''
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> None:
+        """
         If both raw coordinates and HGVS notation are present, ensure that the genotype notations match
-        '''
+        """
 
         pattern = re.compile(
             r"^(?:chr)?(?P<chromosome_name>[^:]+):g\.(?P<mutation_position>\d+)"
             r"(?P<reference_allele>[ACGT]+)>(?P<alternative_allele>[ACGT]+)$",
-            re.IGNORECASE
+            re.IGNORECASE,
         )
 
         for idx, row in df.iterrows():
@@ -138,11 +152,13 @@ class DefaultMapper(TableMapper):
             m = pattern.match(hgvs)
             if not m:
                 # always treat malformed HGVS as an error
-                notepad.add_error(f"Sheet {sheet_name!r}, row {idx}: malformed HGVS g. notation {hgvs!r}")
+                notepad.add_error(
+                    f"Sheet {sheet_name!r}, row {idx}: malformed HGVS g. notation {hgvs!r}"
+                )
                 continue
             chromosome_name = m.group("chromosome_name")
             mutation_position = int(m.group("mutation_position"))
-            reference = m.group("reference_allele")
+            reference_allele = m.group("reference_allele")
             alternative_allele = m.group("alternative_allele")
 
             # compare against raw columns
@@ -152,11 +168,11 @@ class DefaultMapper(TableMapper):
                 f"{row['end_position']} {row['reference']}>{row['alternate']})"
             )
             if (
-                    str(row["chromosome"])          != chromosome_name
-                    or int(row["start_position"])   != mutation_position
-                    or int(row["end_position"])     != mutation_position
-                    or str(row["reference"])        != reference_allele
-                    or str(row["alternate"])        != alternative_allele
+                str(row["chromosome"]) != chromosome_name
+                or int(row["start_position"]) != mutation_position
+                or int(row["end_position"]) != mutation_position
+                or str(row["reference"]) != reference_allele
+                or str(row["alternate"]) != alternative_allele
             ):
                 if self.strict_variants:
                     notepad.add_error(mismatch_msg)

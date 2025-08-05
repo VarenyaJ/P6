@@ -24,6 +24,7 @@ from .mapper import DefaultMapper
 
 AuditEntry = namedtuple("AuditEntry", ["step", "sheet", "message", "level"])
 
+
 @click.group()
 def main():
     """P6: Peter's Parse and Processing of Prenatal Particulars via Pandas."""
@@ -77,6 +78,7 @@ def download(data_dir: str, hpo_version: typing.Optional[str]):
     click.echo(f"Saved HPO JSON to {out}")
     pass
 
+
 @main.command(name="parse-excel")
 @click.option(
     "-e",
@@ -93,9 +95,20 @@ def download(data_dir: str, hpo_version: typing.Optional[str]):
     type=click.Path(exists=True, dir_okay=False),
     help="path to a custom HPO JSON file (defaults to tests/data/hp.json)",
 )
-@click.option("--strict-variants/--no-strict-variants", default=False, help=("Treat raw↔HGVS mismatches as errors (default: warn)."))
-@click.option("--verbose", is_flag=True, help="Show preprocessing and classification steps")
-def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None, verbose: bool = False, strict_variants: bool = False):
+@click.option(
+    "--strict-variants/--no-strict-variants",
+    default=False,
+    help=("Treat raw↔HGVS mismatches as errors (default: warn)."),
+)
+@click.option(
+    "--verbose", is_flag=True, help="Show preprocessing and classification steps"
+)
+def parse_excel(
+    excel_file: str,
+    hpo_path: typing.Optional[str] = None,
+    verbose: bool = False,
+    strict_variants: bool = False,
+):
     """
     Read each sheet, check column order, then:
       - Identify as a Genotype sheet if ALL GENOTYPE_KEY_COLUMNS are present.
@@ -118,7 +131,7 @@ def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None, verbose:
     # optionally audit preprocessing
     if verbose:
         for entry in preprocess(tables):
-            #click.echo(f"[{entry.level.upper():7}] {entry.step:20} {entry.sheet:15} {entry.message}")
+            # click.echo(f"[{entry.level.upper():7}] {entry.step:20} {entry.sheet:15} {entry.message}")
             # indent every line…
             indent = "              "
             line = f"{entry.step:20} {entry.sheet:15} {entry.message}"
@@ -310,6 +323,7 @@ def _write_phenopackets(
         with open(generated_phenopacket_output_path, "w", encoding="utf-8") as out_f:
             out_f.write(MessageToJson(phenopacket))
 
+
 def preprocess(tables: dict[str, pd.DataFrame]) -> list[AuditEntry]:
     """
     Run lightweight audits on each sheet:
@@ -328,12 +342,14 @@ def preprocess(tables: dict[str, pd.DataFrame]) -> list[AuditEntry]:
 
     # Step 1: header counts
     for name, df in tables.items():
-        entries.append(AuditEntry(
-            step="normalize-headers",
-            sheet=name,
-            message=f"{len(df.columns)} cols",
-            level="info",
-        ))
+        entries.append(
+            AuditEntry(
+                step="normalize-headers",
+                sheet=name,
+                message=f"{len(df.columns)} cols",
+                level="info",
+            )
+        )
 
     # Step 2: classify
     for name, df in tables.items():
@@ -344,24 +360,31 @@ def preprocess(tables: dict[str, pd.DataFrame]) -> list[AuditEntry]:
         is_pheno = PHENOTYPE_KEY_COLUMNS.issubset(cols)
 
         kind = "genotype" if is_gen else "phenotype" if is_pheno else "skip"
-        entries.append(AuditEntry(
-            step="classify-sheet",
-            sheet=name,
-            message=kind + (f" ({'raw+hgvs' if has_raw and has_hgvs else 'raw' if has_raw else 'hgvs'})"),
-            level="info",
-        ))
+        entries.append(
+            AuditEntry(
+                step="classify-sheet",
+                sheet=name,
+                message=kind
+                + (
+                    f" ({'raw+hgvs' if has_raw and has_hgvs else 'raw' if has_raw else 'hgvs'})"
+                ),
+                level="info",
+            )
+        )
 
     # Step 3: variant columns
     for name, df in tables.items():
         cols = set(df.columns)
         if GENOTYPE_BASE_COLUMNS.issubset(cols):
             if not (RAW_VARIANT_COLUMNS.issubset(cols) or HGVS_VARIANT_COLUMNS & cols):
-                entries.append(AuditEntry(
-                    step="variant-check",
-                    sheet=name,
-                    message="missing raw & HGVS",
-                    level="error",
-                ))
+                entries.append(
+                    AuditEntry(
+                        step="variant-check",
+                        sheet=name,
+                        message="missing raw & HGVS",
+                        level="error",
+                    )
+                )
     return entries
 
 

@@ -63,6 +63,13 @@ INHERITANCE_MAP = {
     "denovo": "de_novo_mutation",
 }
 
+# Check Variant column groups: allow either the full raw coordinates or any HGVS notation
+RAW_VARIANT_COLUMNS = {"chromosome", "start_position", "end_position", "reference", "alternate"}
+HGVS_VARIANT_COLUMNS = {"hgvsg", "hgvsc", "hgvsp"}
+# minimal base columns to call something a genotype sheet (we bring the index in later)
+GENOTYPE_BASE_COLUMNS = {"contact_email", "phasing"}
+
+
 class TableMapper(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def apply_mapping(
@@ -71,8 +78,13 @@ class TableMapper(metaclass=abc.ABCMeta):
         pass
 
 class DefaultMapper(TableMapper):
-    def __init__(self, hpo: hpotk.MinimalOntology):
+    def __init__(self, hpo: hpotk.MinimalOntology, strict_variants: bool = False):
+        """
+        - False: raw⇄HGVS mismatches are logged as WARNINGS
+        - True : raw⇄HGVS mismatches are logged as ERRORS
+        """
         self._hpo = hpo
+        self.strict_variants = strict_variants
 
     def apply_mapping(
         self, tables: dict[str, pd.DataFrame], notepad: Notepad
@@ -82,11 +94,17 @@ class DefaultMapper(TableMapper):
 
         for sheet_name, df in tables.items():
             columns = set(df.columns)
+            """ 1) classify: does this look like genotype, phenotype, or something to skip? """
+            has_raw = RAW_VARIANT_COLUMNS.issubset(columns)
+            has_hgvs = bool(HGVS_VARIANT_COLUMNS & columns)
             """Send each sheet to the right extractor and collect all records."""
-            is_genotype_sheet = GENOTYPE_KEY_COLUMNS.issubset(columns)
+            is_genotype_sheet = (GENOTYPE_BASE_COLUMNS.issubset(columns) and (has_raw or has_hgvs))
             is_phenotype_sheet = PHENOTYPE_KEY_COLUMNS.issubset(columns)
 
             if is_genotype_sheet == is_phenotype_sheet:
+                # if we have both raw & HGVS notations, we need to validate that they match
+                if has_raw and has_hgvs:
+                    self._check_hgvs_consistency(sheet_name, df, notepad)
                 # ambiguous sheet should give a warning instead of an error
                 notepad.add_warning(
                     f"Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype"
@@ -97,15 +115,53 @@ class DefaultMapper(TableMapper):
             working = self._prepare_sheet(df, is_genotype_sheet)
 
             if is_genotype_sheet:
-                genotype_records.extend(
-                    self._map_genotype(sheet_name, working, notepad)
-                )
+                genotype_records.extend(self._map_genotype(sheet_name, working, notepad))
             else:
-                phenotype_records.extend(
-                    self._map_phenotype(sheet_name, working, notepad)
-                )
+                phenotype_records.extend(self._map_phenotype(sheet_name, working, notepad))
 
         return genotype_records, phenotype_records
+
+    def _check_hgvs_consistency(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> None:
+        '''
+        If both raw coordinates and HGVS notation are present, ensure that the genotype notations match
+        '''
+
+        pattern = re.compile(
+            r"^(?:chr)?(?P<chromosome_name>[^:]+):g\.(?P<mutation_position>\d+)"
+            r"(?P<reference_allele>[ACGT]+)>(?P<alternative_allele>[ACGT]+)$",
+            re.IGNORECASE
+        )
+
+        for idx, row in df.iterrows():
+            hgvs = str(row.get("hgvsg", "")).strip()
+            m = pattern.match(hgvs)
+            if not m:
+                # always treat malformed HGVS as an error
+                notepad.add_error(f"Sheet {sheet_name!r}, row {idx}: malformed HGVS g. notation {hgvs!r}")
+                continue
+            chromosome_name = m.group("chromosome_name")
+            mutation_position = int(m.group("mutation_position"))
+            reference = m.group("reference_allele")
+            alternative_allele = m.group("alternative_allele")
+
+            # compare against raw columns
+            mismatch_msg = (
+                f"Sheet {sheet_name!r}, row {idx}: HGVS '{hgvs}' disagrees with "
+                f"raw ({row['chromosome']}:{row['start_position']}-"
+                f"{row['end_position']} {row['reference']}>{row['alternate']})"
+            )
+            if (
+                    str(row["chromosome"])          != chromosome_name
+                    or int(row["start_position"])   != mutation_position
+                    or int(row["end_position"])     != mutation_position
+                    or str(row["reference"])        != reference_allele
+                    or str(row["alternate"])        != alternative_allele
+            ):
+                if self.strict_variants:
+                    notepad.add_error(mismatch_msg)
+                else:
+                    notepad.add_warning(mismatch_msg)
 
     def _prepare_sheet(self, df: pd.DataFrame, is_genotype: bool) -> pd.DataFrame:
         """Bring the index into a column and name it appropriately."""

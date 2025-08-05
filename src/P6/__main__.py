@@ -234,9 +234,7 @@ def _write_phenopackets(
                 genomic_interpretation_entry.InterpretationStatus.CONTRIBUTORY
             )
 
-            # now fill in the VariationDescriptor
-            # TODO: set this up later
-            # Omit setting gene_context for now.
+            # TODO: Revise VariationDescriptor and gene_context later, omit setting gene_context for now.
             # variation_descriptor = genomic_interpretation_entry.variant_interpretation.variation_descriptor
             # we can also set variation_descriptor.gene_context and variation_descriptor.allelic_state here then serialize out as before
             # variation_descriptor.gene_context.gene_symbol = genotype_record.gene_symbol
@@ -247,13 +245,13 @@ def _write_phenopackets(
             variation_descriptor = variant_interpretation.variation_descriptor
 
             # 1) Gene symbol & allelic state
-            # 'gene_context' is a message; you must CopyFrom if setting a message,
-            # but for its scalar fields you can still assign directly:
+            # 'gene_context' is a message; we need to CopyFrom if setting a message,
+            # but for its scalar fields we can still assign directly:
             variation_descriptor.gene_context.symbol = genotype_record.gene_symbol
             variation_descriptor.allelic_state.CopyFrom(
                 pps2.OntologyClass(
                     id="GENO:"
-                    + genotype_record.zygosity_code,  # or however you construct this
+                    + genotype_record.zygosity_code,  # or however we decide to construct this later on
                     label=genotype_record.zygosity,
                 )
             )
@@ -284,12 +282,6 @@ def _write_phenopackets(
             except AttributeError:
                 # some protobuffs give trouble when trying to expose location/alleles so just skip
                 pass
-
-            # TODO: when ready, add an Expression.HGVS here
-            # Record the HGVS genomic notation as an Expression
-            # expr = variation_descriptor.expressions.add()
-            # expr.syntax = Phenopacket.Diagnosis.GenomicInterpretation.VariantInterpretation.VariationDescriptor.Expression.HGVS
-            # expr.value = genotype_record.hgvsg
 
         # 3d) Serialize to JSON
         generated_phenopacket_output_path = (

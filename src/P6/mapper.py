@@ -19,14 +19,6 @@ from .genotype import Genotype
 from .phenotype import Phenotype
 
 
-class TableMapper(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def apply_mapping(
-        self, tables: dict[str, pd.DataFrame], notepad: Notepad
-    ) -> typing.Sequence[Phenopacket]:
-        pass
-
-
 # For any renamed field, the two neighbors it must sit between
 EXPECTED_COLUMN_NEIGHBORS = {
     "start_position": ("chromosome", "end_position"),
@@ -71,6 +63,12 @@ INHERITANCE_MAP = {
     "denovo": "de_novo_mutation",
 }
 
+class TableMapper(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def apply_mapping(
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad
+    ) -> typing.Sequence[Phenopacket]:
+        pass
 
 class DefaultMapper(TableMapper):
     def __init__(self, hpo: hpotk.MinimalOntology):

@@ -46,7 +46,6 @@ def main():
     help="exact HPO release tag (e.g. 2025-03-03 or v2025-03-03)",
 )
 def download(data_dir: str, hpo_version: typing.Optional[str]):
-    # TODO: download an HPO
     """
     Download a specific or the latest HPO JSON release into the tests/data/ folder.
     """

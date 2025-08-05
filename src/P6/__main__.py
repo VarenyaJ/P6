@@ -121,11 +121,6 @@ def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None):
     # 5) Report any errors or warnings
     _report_issues(notepad)
 
-    # pps = mapper.apply_mapping(all_sheets, notepad)
-    # assert not notepad.has_errors_or_warnings(include_subsections=True)
-    # TODO: write phenopackets to a folder
-    # click.echo(f"Created {len(pps)} Phenotype objects")
-
     # 6) Group results by patient
     records_by_patient = _group_records_by_patient(genotype_records, phenotype_records)
 

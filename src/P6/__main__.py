@@ -17,6 +17,7 @@ from datetime import datetime
 from google.protobuf.json_format import MessageToJson
 from stairval.notepad import create_notepad
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
+import phenopackets.schema.v2 as pps2
 
 from .loader import load_sheets_as_tables
 from .mapper import DefaultMapper
@@ -246,6 +247,49 @@ def _write_phenopackets(
             # we can also set variation_descriptor.gene_context and variation_descriptor.allelic_state here then serialize out as before
             # variation_descriptor.gene_context.gene_symbol = genotype_record.gene_symbol
             # variation_descriptor.allelic_state = variation_descriptor.AllelicState.Value(genotype_record.zygosity.upper())
+
+            # Grab the VariantInterpretation and its descriptor
+            variant_interpretation = genomic_interpretation_entry.variant_interpretation
+            variation_descriptor = variant_interpretation.variation_descriptor
+
+            # 1) Gene symbol & allelic state
+            # 'gene_context' is a message; you must CopyFrom if setting a message,
+            # but for its scalar fields you can still assign directly:
+            variation_descriptor.gene_context.symbol = genotype_record.gene_symbol
+            variation_descriptor.allelic_state.CopyFrom(
+                pps2.OntologyClass(
+                    id="GENO:"
+                    + genotype_record.zygosity_code,  # or however you construct this
+                    label=genotype_record.zygosity,
+                )
+            )
+
+            # 2) HGVS expression
+            hgvs_expr = variation_descriptor.expressions.add()
+            # Attempt to set the HGVS syntax enum if available; otherwise skip.
+            try:
+                hgvs_expr.syntax = pps2.VariationDescriptor.Expression.HGVS
+            except AttributeError:
+                pass
+            hgvs_expr.value = genotype_record.hgvsg
+
+            # 3) Genomic location (exact interval) and alleles, if supported
+            try:
+                loc_ctx = variation_descriptor.location
+                # use the nested VariationDescriptor.Location enum
+                loc_ctx.interval.interval_type = (
+                    pps2.VariationDescriptor.Location.Interval.Type.EXACT
+                )
+                loc_ctx.interval.start = genotype_record.start_position
+                loc_ctx.interval.end = genotype_record.end_position
+                loc_ctx.reference_sequence_id = genotype_record.chromosome
+
+                # 4) Reference & alternate alleles
+                variation_descriptor.reference = genotype_record.reference
+                variation_descriptor.alternate = genotype_record.alternate
+            except AttributeError:
+                # some protobuffs give trouble when trying to expose location/alleles so just skip
+                pass
 
             # TODO: when ready, add an Expression.HGVS here
             # Record the HGVS genomic notation as an Expression

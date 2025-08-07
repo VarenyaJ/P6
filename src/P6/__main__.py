@@ -195,7 +195,7 @@ def parse_excel(
 
     # 4) Apply mapping to get raw records and collect issues
     notepad = create_notepad("phenopackets")
-    genotype_records, phenotype_records = mapper.apply_mapping(tables, notepad)
+    genotype_records, phenotype_records, disease_records, measurement_records, biosample_records= mapper.apply_mapping(tables, notepad)
 
     # 5) Report any errors or warnings
     _report_issues(notepad)
@@ -255,14 +255,20 @@ def _report_issues(notepad):
 
 
 def _group_records_by_patient(
-    genotype_records: list, phenotype_records: list
+    genotype_records: list, phenotype_records: list, disease_records: list, measurement_records: list, biosample_records: list
 ) -> dict[str, dict[str, list]]:
     # Group genotype & phenotype records by patient ID
-    records = defaultdict(lambda: {"genotype_records": [], "phenotype_records": []})
+    records = defaultdict(lambda: {"genotype_records": [], "phenotype_records": [], "disease_records": [], "measurement_records": [], "biosample_records": []})
     for genotype in genotype_records:
         records[genotype.genotype_patient_ID]["genotype_records"].append(genotype)
     for phenotype in phenotype_records:
         records[phenotype.phenotype_patient_ID]["phenotype_records"].append(phenotype)
+    for disease in disease_records:
+        records[disease.patient_ID]["disease_records"].append(disease)
+    for measurement in measurement_records:
+        records[measurement.patient_ID]["measurement_records"].append(measurement)
+    for biosample in biosample_records:
+        records[biosample.patient_ID]["biosample_records"].append(biosample)
     return records
 
 
@@ -362,6 +368,25 @@ def _write_phenopackets(
             except AttributeError:
                 # some protobuffs give trouble when trying to expose location/alleles so just skip
                 pass
+
+        # 3c) Add optional entries (if any):
+        for d in patient_data["disease_records"]:
+            ds = phenopacket.diseases.add()
+            ds.term.id = d.disease_term
+            ds.term.label = d.disease_label
+            ds.onset = d.disease_onset
+            ds.status = d.disease_status
+        for m in patient_data["measurement_records"]:
+            meas = phenopacket.measurements.add()
+            meas.type.id = m.measurement_type
+            meas.value = m.measurement_value
+            meas.unit = m.measurement_unit
+            meas.timestamp = m.measurement_timestamp
+        for b in patient_data["biosample_records"]:
+            bs = phenopacket.biosamples.add()
+            bs.id = b.biosample_id
+            bs.type.id = b.biosample_type
+            bs.collection_time = b.collection_date
 
         # 3d) Serialize to JSON
         generated_phenopacket_output_path = (

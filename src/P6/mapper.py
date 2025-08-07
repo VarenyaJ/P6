@@ -15,7 +15,10 @@ import typing
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
 from stairval.notepad import Notepad
 
+from .biosample import BiosampleRecord
+from .disease import DiseaseRecord
 from .genotype import Genotype
+from .measurement import MeasurementRecord
 from .phenotype import Phenotype
 
 
@@ -46,6 +49,12 @@ GENOTYPE_KEY_COLUMNS = {
 }
 
 PHENOTYPE_KEY_COLUMNS = {"hpo_id", "date_of_observation", "status"}
+
+# Key columns to identify additional sheets
+DISEASE_KEY_COLUMNS     = {"disease_term", "disease_onset"}
+MEASUREMENT_KEY_COLUMNS = {"measurement_type", "measurement_value", "measurement_unit"}
+BIOSAMPLE_KEY_COLUMNS   = {"biosample_id", "biosample_type", "collection_date"}
+
 
 # Map raw zygosity abbreviations to allowed dataclass zygosity values
 ZYGOSITY_MAP = {
@@ -95,9 +104,12 @@ class DefaultMapper(TableMapper):
 
     def apply_mapping(
         self, tables: dict[str, pd.DataFrame], notepad: Notepad
-    ) -> tuple[list[Genotype], list[Phenotype]]:
+    ) -> tuple[list[Genotype], list[Phenotype], list[DiseaseRecord], list[MeasurementRecord], list[BiosampleRecord]]:
         genotype_records: list[Genotype] = []
         phenotype_records: list[Phenotype] = []
+        disease_records: list[DiseaseRecord] = []
+        measurement_records: list[MeasurementRecord] = []
+        biosample_records: list[BiosampleRecord] = []
 
         for sheet_name, df in tables.items():
             columns = set(df.columns)
@@ -132,7 +144,18 @@ class DefaultMapper(TableMapper):
                     self._map_phenotype(sheet_name, working, notepad)
                 )
 
-        return genotype_records, phenotype_records
+            # New Fields
+            if DISEASE_KEY_COLUMNS.issubset(columns):
+                disease_records.extend(self._map_disease(sheet_name, working, notepad))
+                continue
+            if MEASUREMENT_KEY_COLUMNS.issubset(columns):
+                measurement_records.extend(self._map_measurement(sheet_name, working, notepad))
+                continue
+            if BIOSAMPLE_KEY_COLUMNS.issubset(columns):
+                biosample_records.extend(self._map_biosample(sheet_name, working, notepad))
+                continue
+
+        return genotype_records, phenotype_records, disease_records, measurement_records, biosample_records, biosample_records
 
     def _check_hgvs_consistency(
         self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
@@ -338,3 +361,27 @@ class DefaultMapper(TableMapper):
                     notepad.add_warning(msg)
 
         return records
+
+    def _map_disease(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[DiseaseRecord]:
+    """
+    Map each row in a disease sheet to a DiseaseRecord.
+    """
+    records: list[DiseaseRecord] = []
+    # TODO: implement row→DiseaseRecord conversion
+    raise NotImplementedError
+
+    def _map_measurement(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[MeasurementRecord]:
+    """
+    Map each row in a measurement sheet to a MeasurementRecord.
+    """
+    records: list[MeasurementRecord] = []
+    # TODO: implement row→MeasurementRecord conversion
+    raise NotImplementedError
+
+    def _map_biosample(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[BiosampleRecord]:
+    """
+    Map each row in a biosample sheet to a BiosampleRecord.
+    """
+    records: list[BiosampleRecord] = []
+    # TODO: implement row→BiosampleRecord conversion
+    raise NotImplementedError

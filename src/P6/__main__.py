@@ -202,6 +202,7 @@ def parse_excel(
         measurement_records,
         biosample_records
     ) = mapper.apply_mapping(tables, notepad)
+    # TODO: Come back and add more top-level fields
 
     # 5) Report any errors or warnings
     _report_issues(notepad)

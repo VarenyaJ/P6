@@ -104,7 +104,24 @@ class DefaultMapper(TableMapper):
 
     def apply_mapping(
         self, tables: dict[str, pd.DataFrame], notepad: Notepad
-    ) -> tuple[list[Genotype] = [], list[Phenotype] = [], list[DiseaseRecord] = [], list[MeasurementRecord] = [], list[BiosampleRecord] = []]:
+    ) -> tuple[
+        list[Genotype],
+        list[Phenotype],
+        list[DiseaseRecord],
+        list[MeasurementRecord],
+        list[BiosampleRecord],
+        ]:
+            """
+            1) classify each sheet as genotype / phenotype / disease / measurement / biosample
+            2) call the matching mapper
+            """
+            # initialize the lists to return
+            genotype_records: list[Genotype]                = []
+            phenotype_records: list[Phenotype]              = []
+            disease_records: list[DiseaseRecord]            = []
+            measurement_records: list[MeasurementRecord]    = []
+            biosample_records: list[BiosampleRecord]        = []
+
 
         for sheet_name, df in tables.items():
             columns = set(df.columns)
@@ -112,9 +129,7 @@ class DefaultMapper(TableMapper):
             has_raw = RAW_VARIANT_COLUMNS.issubset(columns)
             has_hgvs = bool(HGVS_VARIANT_COLUMNS & columns)
             """Send each sheet to the right extractor and collect all records."""
-            is_genotype_sheet = GENOTYPE_BASE_COLUMNS.issubset(columns) and (
-                has_raw or has_hgvs
-            )
+            is_genotype_sheet = GENOTYPE_BASE_COLUMNS.issubset(columns) and (has_raw or has_hgvs)
             is_phenotype_sheet = PHENOTYPE_KEY_COLUMNS.issubset(columns)
 
             if is_genotype_sheet == is_phenotype_sheet:
@@ -122,9 +137,7 @@ class DefaultMapper(TableMapper):
                 if has_raw and has_hgvs:
                     self._check_hgvs_consistency(sheet_name, df, notepad)
                 # ambiguous sheet should give a warning instead of an error
-                notepad.add_warning(
-                    f"Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype"
-                )
+                notepad.add_warning(f"Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype")
                 continue
 
             # rename the former-index column
@@ -150,7 +163,13 @@ class DefaultMapper(TableMapper):
                 biosample_records.extend(self._map_biosample(sheet_name, working, notepad))
                 continue
 
-        return genotype_records, phenotype_records, disease_records, measurement_records, biosample_records
+        return (
+            genotype_records,
+            phenotype_records,
+            disease_records,
+            measurement_records,
+            biosample_records,
+        )
 
     def _check_hgvs_consistency(
         self, sheet_name: str, df: pd.DataFrame, notepad: Notepad

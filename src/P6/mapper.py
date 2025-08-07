@@ -123,7 +123,7 @@ class DefaultMapper(TableMapper):
             biosample_records: list[BiosampleRecord]        = []
 
 
-        for sheet_name, df in tables.items():
+            for sheet_name, df in tables.items():
             columns = set(df.columns)
             """ 1) classify: does this look like genotype, phenotype, or something to skip? """
             has_raw = RAW_VARIANT_COLUMNS.issubset(columns)

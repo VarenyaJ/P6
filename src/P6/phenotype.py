@@ -27,6 +27,7 @@ class Phenotype:
 
     phenotype_patient_ID: str
     HPO_ID: str
+    hpo_label: str
     date_of_observation: str
     status: bool
 

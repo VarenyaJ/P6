@@ -216,6 +216,7 @@ def _write_phenopackets(
         for phenotype in patient_data["phenotype_records"]:
             feature = phenopacket.phenotypic_features.add()
             feature.type.id = phenotype.HPO_ID
+           
             # mark as excluded if status is False
             if not phenotype.status:
                 feature.excluded = True

@@ -11,8 +11,10 @@ from hpotk.validate import (
 import pandas as pd
 import re
 import typing
+from collections import defaultdict
 
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
+import phenopackets
 from stairval.notepad import Notepad
 
 from .genotype import Genotype
@@ -168,9 +170,39 @@ class DefaultMapper(TableMapper):
                     notepad.add_error(f"Sheet {sheet_name!r}, row {idx}: {e}")
         return records
 
+    
+    
+    def create_phenotypic_feature(
+            self,
+            hpo_id: str,
+            hpo_label: str,
+            status: str
+    ) -> phenopackets.PhenotypicFeature:
+        """
+        Create an PhenotypicFeature from input strings
+         
+        """
+        if hpo_id not in self._hpo:
+            raise ValueError(f"Could not find HPO Term Id {hpo_id} in HPO")
+        else:
+            term = self._hpo.get_term(hpo_id)
+           # if term.
+        allowable_status_entries = {"e", "o", "na"}
+        pf = phenopackets.PhenotypicFeature()
+        pf.type.id = hpo_id
+        pf.type.label = hpo_label
+        if status not in allowable_status_entries:
+            raise ValueError(f"Unrecognized status {status}")
+        if status == "e": ## TODO check input
+            pf.excluded = True
+        
+        return pf
+    
+    
     def _map_phenotype(
         self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
     ) -> list[Phenotype]:
+        phenotypic_feature_d = defaultdict(list) # key: Patient id, value: List of phenotypic features
         records: list[Phenotype] = []
         # Collect every HPO ID in this sheet, so we can validate propagation later:
         all_ids: list[hpotk.TermId] = []
@@ -220,10 +252,17 @@ class DefaultMapper(TableMapper):
                 Phenotype(
                     phenotype_patient_ID=str(row["phenotype_patient_ID"]),
                     HPO_ID=curie,
+                    hpo_label=raw_label,
                     date_of_observation=date_str,
                     status=bool(row["status"]),
                 )
             )
+            patient_id = row["phenotype_patient_ID"]
+            try:
+                pf = self.create_phenotypic_feature(hpo_id=curie, hpo_label=raw_label, status=row["status"])
+                phenotypic_feature_d[patient_id].append(pf)
+            except Exception as exc:
+                print(f"Could not parse line {exc}")
 
             # 3) The IDs must exist in the ontology:
             # Validate ID against ontology

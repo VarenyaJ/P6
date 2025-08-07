@@ -195,13 +195,19 @@ def parse_excel(
 
     # 4) Apply mapping to get raw records and collect issues
     notepad = create_notepad("phenopackets")
-    genotype_records, phenotype_records, disease_records, measurement_records, biosample_records= mapper.apply_mapping(tables, notepad)
+    (
+        genotype_records,
+        phenotype_records,
+        disease_records,
+        measurement_records,
+        biosample_records
+    ) = mapper.apply_mapping(tables, notepad)
 
     # 5) Report any errors or warnings
     _report_issues(notepad)
 
     # 6) Group results by patient
-    records_by_patient = _group_records_by_patient(genotype_records, phenotype_records)
+    records_by_patient = _group_records_by_patient(genotype_records, phenotype_records, disease_records, measurement_records, biosample_records)
 
     # 7) Prepare output directory with timestamp
     # Will contain genotype and phenotype records as JSON

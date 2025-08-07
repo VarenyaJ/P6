@@ -6,6 +6,7 @@ Defines the BiosampleRecord dataclass for capturing sample metadata.
 
 from dataclasses import dataclass
 
+
 @dataclass
 class BiosampleRecord:
     """
@@ -17,6 +18,7 @@ class BiosampleRecord:
         biosample_type: CURIE of the tissue or sample type (e.g. 'UBERON:0002107').
         collection_date: Date string in 'YYYY-MM-DD' format.
     """
+
     patient_ID: str
     biosample_id: str
     biosample_type: str

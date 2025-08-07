@@ -24,6 +24,7 @@ def fpath_hpo(fpath_test_dir: str) -> str:
 def hpo(fpath_hpo: str) -> hpotk.MinimalOntology:
     return hpotk.load_minimal_ontology(fpath_hpo)
 
+
 # use the `hpo` already defined above in this file
 @pytest.fixture
 def decompressed_hpo(fpath_hpo: str, tmp_path: Path) -> str:

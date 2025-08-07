@@ -51,9 +51,9 @@ GENOTYPE_KEY_COLUMNS = {
 PHENOTYPE_KEY_COLUMNS = {"hpo_id", "date_of_observation", "status"}
 
 # Key columns to identify additional sheets
-DISEASE_KEY_COLUMNS     = {"disease_term", "disease_onset"}
+DISEASE_KEY_COLUMNS = {"disease_term", "disease_onset"}
 MEASUREMENT_KEY_COLUMNS = {"measurement_type", "measurement_value", "measurement_unit"}
-BIOSAMPLE_KEY_COLUMNS   = {"biosample_id", "biosample_type", "collection_date"}
+BIOSAMPLE_KEY_COLUMNS = {"biosample_id", "biosample_type", "collection_date"}
 
 
 # Map raw zygosity abbreviations to allowed dataclass zygosity values
@@ -110,18 +110,17 @@ class DefaultMapper(TableMapper):
         list[DiseaseRecord],
         list[MeasurementRecord],
         list[BiosampleRecord],
-        ]:
+    ]:
         """
         1) classify each sheet as genotype / phenotype / disease / measurement / biosample
         2) call the matching mapper
         """
         # initialize the lists to return
-        genotype_records: list[Genotype]                = []
-        phenotype_records: list[Phenotype]              = []
-        disease_records: list[DiseaseRecord]            = []
-        measurement_records: list[MeasurementRecord]    = []
-        biosample_records: list[BiosampleRecord]        = []
-
+        genotype_records: list[Genotype] = []
+        phenotype_records: list[Phenotype] = []
+        disease_records: list[DiseaseRecord] = []
+        measurement_records: list[MeasurementRecord] = []
+        biosample_records: list[BiosampleRecord] = []
 
         for sheet_name, df in tables.items():
             columns = set(df.columns)
@@ -129,7 +128,9 @@ class DefaultMapper(TableMapper):
             has_raw = RAW_VARIANT_COLUMNS.issubset(columns)
             has_hgvs = bool(HGVS_VARIANT_COLUMNS & columns)
             """Send each sheet to the right extractor and collect all records."""
-            is_genotype_sheet = GENOTYPE_BASE_COLUMNS.issubset(columns) and (has_raw or has_hgvs)
+            is_genotype_sheet = GENOTYPE_BASE_COLUMNS.issubset(columns) and (
+                has_raw or has_hgvs
+            )
             is_phenotype_sheet = PHENOTYPE_KEY_COLUMNS.issubset(columns)
 
             if is_genotype_sheet == is_phenotype_sheet:
@@ -137,7 +138,9 @@ class DefaultMapper(TableMapper):
                 if has_raw and has_hgvs:
                     self._check_hgvs_consistency(sheet_name, df, notepad)
                 # ambiguous sheet should give a warning instead of an error
-                notepad.add_warning(f"Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype")
+                notepad.add_warning(
+                    f"Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype"
+                )
                 continue
 
             # rename the former-index column
@@ -157,10 +160,14 @@ class DefaultMapper(TableMapper):
                 disease_records.extend(self._map_disease(sheet_name, working, notepad))
                 continue
             if MEASUREMENT_KEY_COLUMNS.issubset(columns):
-                measurement_records.extend(self._map_measurement(sheet_name, working, notepad))
+                measurement_records.extend(
+                    self._map_measurement(sheet_name, working, notepad)
+                )
                 continue
             if BIOSAMPLE_KEY_COLUMNS.issubset(columns):
-                biosample_records.extend(self._map_biosample(sheet_name, working, notepad))
+                biosample_records.extend(
+                    self._map_biosample(sheet_name, working, notepad)
+                )
                 continue
 
         return (
@@ -376,26 +383,30 @@ class DefaultMapper(TableMapper):
 
         return records
 
-    def _map_disease(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[DiseaseRecord]:
+    def _map_disease(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[DiseaseRecord]:
+        # TODO: implement row→DiseaseRecord, row→MeasurementRecord conversion, and row→BiosampleRecord conversions
         """
         Map each row in a disease sheet to a DiseaseRecord.
         """
-        records: list[DiseaseRecord] = []
-        # TODO: implement row→DiseaseRecord conversion
+        # TODO: fix as this is not in use now: records: list[DiseaseRecord] = []
         raise NotImplementedError
 
-    def _map_measurement(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[MeasurementRecord]:
+    def _map_measurement(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[MeasurementRecord]:
         """
         Map each row in a measurement sheet to a MeasurementRecord.
         """
-        records: list[MeasurementRecord] = []
-        # TODO: implement row→MeasurementRecord conversion
+        # TODO: fix as this is not in use now: records: list[MeasurementRecord] = []
         raise NotImplementedError
 
-    def _map_biosample(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[BiosampleRecord]:
+    def _map_biosample(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[BiosampleRecord]:
         """
         Map each row in a biosample sheet to a BiosampleRecord.
         """
-        records: list[BiosampleRecord] = []
-        # TODO: implement row→BiosampleRecord conversion
+        # TODO: fix as this is not in use now: records: list[BiosampleRecord] = []
         raise NotImplementedError

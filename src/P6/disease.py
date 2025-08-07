@@ -6,6 +6,7 @@ Defines the DiseaseRecord dataclass for capturing disease annotations.
 
 from dataclasses import dataclass
 
+
 @dataclass
 class DiseaseRecord:
     """
@@ -18,6 +19,7 @@ class DiseaseRecord:
         disease_onset: Date string in 'YYYY-MM-DD' format.
         disease_status: True if the disease is present, False if excluded.
     """
+
     patient_ID: str
     disease_term: str
     disease_label: str

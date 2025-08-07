@@ -6,6 +6,7 @@ Defines the MeasurementRecord dataclass for capturing quantitative measurements.
 
 from dataclasses import dataclass
 
+
 @dataclass
 class MeasurementRecord:
     """
@@ -18,6 +19,7 @@ class MeasurementRecord:
         measurement_unit: Unit CURIE or string (e.g. 'mmol/L').
         measurement_timestamp: ISO timestamp string (e.g. '2025-07-15T14:23:00').
     """
+
     patient_ID: str
     measurement_type: str
     measurement_value: float

@@ -200,7 +200,7 @@ def parse_excel(
         phenotype_records,
         disease_records,
         measurement_records,
-        biosample_records
+        biosample_records,
     ) = mapper.apply_mapping(tables, notepad)
     # TODO: Come back and add more top-level fields
 
@@ -208,7 +208,13 @@ def parse_excel(
     _report_issues(notepad)
 
     # 6) Group results by patient
-    records_by_patient = _group_records_by_patient(genotype_records, phenotype_records, disease_records, measurement_records, biosample_records)
+    records_by_patient = _group_records_by_patient(
+        genotype_records,
+        phenotype_records,
+        disease_records,
+        measurement_records,
+        biosample_records,
+    )
 
     # 7) Prepare output directory with timestamp
     # Will contain genotype and phenotype records as JSON
@@ -262,10 +268,22 @@ def _report_issues(notepad):
 
 
 def _group_records_by_patient(
-    genotype_records: list, phenotype_records: list, disease_records: list, measurement_records: list, biosample_records: list
+    genotype_records: list,
+    phenotype_records: list,
+    disease_records: list,
+    measurement_records: list,
+    biosample_records: list,
 ) -> dict[str, dict[str, list]]:
     # Group genotype & phenotype records by patient ID
-    records = defaultdict(lambda: {"genotype_records": [], "phenotype_records": [], "disease_records": [], "measurement_records": [], "biosample_records": []})
+    records = defaultdict(
+        lambda: {
+            "genotype_records": [],
+            "phenotype_records": [],
+            "disease_records": [],
+            "measurement_records": [],
+            "biosample_records": [],
+        }
+    )
     for genotype in genotype_records:
         records[genotype.genotype_patient_ID]["genotype_records"].append(genotype)
     for phenotype in phenotype_records:

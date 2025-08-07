@@ -111,19 +111,19 @@ class DefaultMapper(TableMapper):
         list[MeasurementRecord],
         list[BiosampleRecord],
         ]:
-            """
-            1) classify each sheet as genotype / phenotype / disease / measurement / biosample
-            2) call the matching mapper
-            """
-            # initialize the lists to return
-            genotype_records: list[Genotype]                = []
-            phenotype_records: list[Phenotype]              = []
-            disease_records: list[DiseaseRecord]            = []
-            measurement_records: list[MeasurementRecord]    = []
-            biosample_records: list[BiosampleRecord]        = []
+        """
+        1) classify each sheet as genotype / phenotype / disease / measurement / biosample
+        2) call the matching mapper
+        """
+        # initialize the lists to return
+        genotype_records: list[Genotype]                = []
+        phenotype_records: list[Phenotype]              = []
+        disease_records: list[DiseaseRecord]            = []
+        measurement_records: list[MeasurementRecord]    = []
+        biosample_records: list[BiosampleRecord]        = []
 
 
-            for sheet_name, df in tables.items():
+        for sheet_name, df in tables.items():
             columns = set(df.columns)
             """ 1) classify: does this look like genotype, phenotype, or something to skip? """
             has_raw = RAW_VARIANT_COLUMNS.issubset(columns)

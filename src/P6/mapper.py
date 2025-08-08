@@ -104,7 +104,8 @@ class DefaultMapper(TableMapper):
         self.strict_variants = strict_variants
 
     def apply_mapping(
-        self, tables: dict[str, pd.DataFrame], notepad: Notepad) -> list[Phenopacket]:
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad
+    ) -> list[Phenopacket]:
         """
         Process:
         1) choose/validate input tables
@@ -119,17 +120,24 @@ class DefaultMapper(TableMapper):
         genotype_records = self._map_genotype_table(typed_tables.genotype, notepad)
         phenotype_records = self._map_phenotype_table(typed_tables.phenotype, notepad)
         disease_records = self._map_diseases_table(typed_tables.diseases, notepad)
-        measurement_records = self._map_measurements_table(typed_tables.measurements, notepad)
+        measurement_records = self._map_measurements_table(
+            typed_tables.measurements, notepad
+        )
         biosample_records = self._map_biosamples_table(typed_tables.biosamples, notepad)
 
-        grouped = self._group_records_by_patient(genotype_records, phenotype_records, disease_records, measurement_records, biosample_records)
+        grouped = self._group_records_by_patient(
+            genotype_records,
+            phenotype_records,
+            disease_records,
+            measurement_records,
+            biosample_records,
+        )
 
         packets: list[Phenopacket] = [
             self.construct_phenopacket_for_patient(patient_id, bundle, notepad)
             for patient_id, bundle in grouped.items()
         ]
         return packets
-
 
     def _check_hgvs_consistency(
         self, sheet_name: str, df: pd.DataFrame, notepad: Notepad

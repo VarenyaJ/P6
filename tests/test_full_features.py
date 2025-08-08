@@ -11,10 +11,10 @@ FULL_XLSX = os.path.join(
 )
 
 
-def test_full_features_parse_creates_all_blocks(decompressed_hpo):
+def test_full_features_parse_creates_all_blocks(fpath_hpo):
     runner = CliRunner()
     result = runner.invoke(
-        main, ["parse-excel", "-e", FULL_XLSX, "--custom-hpo", decompressed_hpo]
+        main, ["parse-excel", "-e", FULL_XLSX, "--custom-hpo", fpath_hpo]
     )
     assert result.exit_code == 0, result.output
 

@@ -90,7 +90,8 @@ class TableMapper(metaclass=abc.ABCMeta):
     def apply_mapping(
         self, tables: dict[str, pd.DataFrame], notepad: Notepad
     ) -> typing.Sequence[Phenopacket]:
-        pass
+        # return fully-assembled Phenopacket messages, not intermediate parts.
+        raise NotImplementedError
 
 
 class DefaultMapper(TableMapper):
@@ -103,80 +104,32 @@ class DefaultMapper(TableMapper):
         self.strict_variants = strict_variants
 
     def apply_mapping(
-        self, tables: dict[str, pd.DataFrame], notepad: Notepad
-    ) -> tuple[
-        list[Genotype],
-        list[Phenotype],
-        list[DiseaseRecord],
-        list[MeasurementRecord],
-        list[BiosampleRecord],
-    ]:
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad) -> list[Phenopacket]:
         """
-        1) classify each sheet as genotype / phenotype / disease / measurement / biosample
-        2) call the matching mapper
+        Process:
+        1) choose/validate input tables
+        2) map rows to domain records
+        3) group records per patient
+        4) construct Phenopacket per patient
+        5) return the list of packets
+
         """
-        # initialize the lists to return
-        genotype_records: list[Genotype] = []
-        phenotype_records: list[Phenotype] = []
-        disease_records: list[DiseaseRecord] = []
-        measurement_records: list[MeasurementRecord] = []
-        biosample_records: list[BiosampleRecord] = []
+        # TODO: implement the placeholders I am going to temporarily call
+        typed_tables = self._choose_named_tables(tables, notepad)
+        genotype_records = self._map_genotype_table(typed_tables.genotype, notepad)
+        phenotype_records = self._map_phenotype_table(typed_tables.phenotype, notepad)
+        disease_records = self._map_diseases_table(typed_tables.diseases, notepad)
+        measurement_records = self._map_measurements_table(typed_tables.measurements, notepad)
+        biosample_records = self._map_biosamples_table(typed_tables.biosamples, notepad)
 
-        for sheet_name, df in tables.items():
-            columns = set(df.columns)
-            """ 1) classify: does this look like genotype, phenotype, or something to skip? """
-            has_raw = RAW_VARIANT_COLUMNS.issubset(columns)
-            has_hgvs = bool(HGVS_VARIANT_COLUMNS & columns)
-            """Send each sheet to the right extractor and collect all records."""
-            is_genotype_sheet = GENOTYPE_BASE_COLUMNS.issubset(columns) and (
-                has_raw or has_hgvs
-            )
-            is_phenotype_sheet = PHENOTYPE_KEY_COLUMNS.issubset(columns)
+        grouped = self._group_records_by_patient(genotype_records, phenotype_records, disease_records, measurement_records, biosample_records)
 
-            if is_genotype_sheet == is_phenotype_sheet:
-                # if we have both raw & HGVS notations, we need to validate that they match
-                if has_raw and has_hgvs:
-                    self._check_hgvs_consistency(sheet_name, df, notepad)
-                # ambiguous sheet should give a warning instead of an error
-                notepad.add_warning(
-                    f"Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype"
-                )
-                continue
+        packets: list[Phenopacket] = [
+            self.construct_phenopacket_for_patient(patient_id, bundle, notepad)
+            for patient_id, bundle in grouped.items()
+        ]
+        return packets
 
-            # rename the former-index column
-            working = self._prepare_sheet(df, is_genotype_sheet)
-
-            if is_genotype_sheet:
-                genotype_records.extend(
-                    self._map_genotype(sheet_name, working, notepad)
-                )
-            else:
-                phenotype_records.extend(
-                    self._map_phenotype(sheet_name, working, notepad)
-                )
-
-            # New Fields
-            if DISEASE_KEY_COLUMNS.issubset(columns):
-                disease_records.extend(self._map_disease(sheet_name, working, notepad))
-                continue
-            if MEASUREMENT_KEY_COLUMNS.issubset(columns):
-                measurement_records.extend(
-                    self._map_measurement(sheet_name, working, notepad)
-                )
-                continue
-            if BIOSAMPLE_KEY_COLUMNS.issubset(columns):
-                biosample_records.extend(
-                    self._map_biosample(sheet_name, working, notepad)
-                )
-                continue
-
-        return (
-            genotype_records,
-            phenotype_records,
-            disease_records,
-            measurement_records,
-            biosample_records,
-        )
 
     def _check_hgvs_consistency(
         self, sheet_name: str, df: pd.DataFrame, notepad: Notepad

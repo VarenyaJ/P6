@@ -195,13 +195,15 @@ def parse_excel(
 
     # 4) Apply mapping to get raw records and collect issues
     notepad = create_notepad("phenopackets")
-    (
-        genotype_records,
-        phenotype_records,
-        disease_records,
-        measurement_records,
-        biosample_records,
-    ) = mapper.apply_mapping(tables, notepad)
+    phenopackets = mapper.apply_mapping(tables, notepad)
+    output_dir = _prepare_output_dir()
+    count = 0
+    for pkt in phenopackets:
+        output_path = output_dir / f"{count + 1}.json"
+        with open(output_path, "w", encoding="utf-8") as out_f:
+            out_f.write(MessageToJson(pkt))
+        count += 1
+    click.echo(f"Wrote {count} phenopacket files to {output_dir}")
     # TODO: Come back and add more top-level fields
 
     # 5) Report any errors or warnings

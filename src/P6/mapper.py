@@ -16,6 +16,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
 from stairval.notepad import Notepad
+from typing import Sequence, Dict, List
 
 from .biosample import BiosampleRecord
 from .disease import DiseaseRecord
@@ -314,50 +315,30 @@ class DefaultMapper(TableMapper):
 
         return records
 
-    def _check_hgvs_consistency(
-        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
-    ) -> None:
-        """
-        If both raw coordinates and HGVS notation are present, ensure that the genotype notations match
-        """
-
+    def check_hgvs_consistency(item: pd.Series, sheet_name: str, notepad: Notepad, strict: bool) -> None:
         pattern = re.compile(
             r"^(?:chr)?(?P<chromosome_name>[^:]+):g\.(?P<mutation_position>\d+)"
             r"(?P<reference_allele>[ACGT]+)>(?P<alternative_allele>[ACGT]+)$",
             re.IGNORECASE,
         )
+        hgvs = str(item.get("hgvsg", "")).strip()
+        m = pattern.match(hgvs)
+        if not m:
+            notepad.add_error(f"Sheet {sheet_name!r}: malformed HGVS g. notation {hgvs!r}")
+            return
 
-        for idx, row in df.iterrows():
-            hgvs = str(row.get("hgvsg", "")).strip()
-            m = pattern.match(hgvs)
-            if not m:
-                # always treat malformed HGVS as an error
-                notepad.add_error(
-                    f"Sheet {sheet_name!r}, row {idx}: malformed HGVS g. notation {hgvs!r}"
-                )
-                continue
-            chromosome_name = m.group("chromosome_name")
-            mutation_position = int(m.group("mutation_position"))
-            reference_allele = m.group("reference_allele")
-            alternative_allele = m.group("alternative_allele")
-
-            # compare against raw columns
-            mismatch_msg = (
-                f"Sheet {sheet_name!r}, row {idx}: HGVS '{hgvs}' disagrees with "
-                f"raw ({row['chromosome']}:{row['start_position']}-"
-                f"{row['end_position']} {row['reference']}>{row['alternate']})"
-            )
-            if (
-                str(row["chromosome"]) != chromosome_name
-                or int(row["start_position"]) != mutation_position
-                or int(row["end_position"]) != mutation_position
-                or str(row["reference"]) != reference_allele
-                or str(row["alternate"]) != alternative_allele
-            ):
-                if self.strict_variants:
-                    notepad.add_error(mismatch_msg)
-                else:
-                    notepad.add_warning(mismatch_msg)
+        mismatch = (
+                str(item["chromosome"]) != m.group("chromosome_name") or
+                int(item["start_position"]) != int(m.group("mutation_position")) or
+                int(item["end_position"]) != int(m.group("mutation_position")) or
+                str(item["reference"]) != m.group("reference_allele") or
+                str(item["alternate"]) != m.group("alternative_allele")
+        )
+        if mismatch:
+            msg = (f"Sheet {sheet_name!r}: HGVS '{hgvs}' disagrees with "
+                   f"raw ({item['chromosome']}:{item['start_position']}-"
+                   f"{item['end_position']} {item['reference']}>{item['alternate']})")
+            (notepad.add_error if strict else notepad.add_warning)(msg)
 
     def _prepare_sheet_for_patient(self, df: pd.DataFrame, patient_id_column: str) -> pd.DataFrame:
         """
@@ -407,7 +388,8 @@ class DefaultMapper(TableMapper):
         working = self._prepare_sheet(df, is_genotype=True)
         columns_present = set(working.columns)
         if RAW_VARIANT_COLUMNS.issubset(columns_present) and (HGVS_VARIANT_COLUMNS & columns_present):
-            self._check_hgvs_consistency("genotype", working, notepad)
+            for _, row in working.iterrows():
+                check_hgvs_consistency(row, "genotype", notepad, self.strict_variants)
         return self._map_genotype("genotype", working, notepad)
 
     def _map_phenotype_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[Phenotype]:

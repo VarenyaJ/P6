@@ -101,31 +101,6 @@ class TypedTables:
     measurements: pd.DataFrame | None
     biosamples: pd.DataFrame | None
 
-def _choose_named_tables(self, tables: dict[str, pd.DataFrame], notepad: Notepad) -> TypedTables:
-    """
-    Prefer explicit sheet names (plus common aliases).
-    """
-    def by_alias(kind: str) -> pd.DataFrame | None:
-        aliases = KNOWN_SHEET_ALIASES[kind]
-        for sheet_name, df in tables.items():
-            if sheet_name.strip().casefold() in aliases:
-                return df
-        return None
-
-    selected = TypedTables(
-        genotype=by_alias("genotype"),
-        phenotype=by_alias("phenotype"),
-        diseases=by_alias("diseases"),
-        measurements=by_alias("measurements"),
-        biosamples=by_alias("biosamples"),
-    )
-
-    # Hard-minimum: at least genotype or phenotype must exist
-    if selected.genotype is None and selected.phenotype is None:
-        notepad.add_error("Missing required sheet: either 'genotype' or 'phenotype'.")
-
-    return selected
-
 class TableMapper(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def apply_mapping(
@@ -133,7 +108,6 @@ class TableMapper(metaclass=abc.ABCMeta):
     ) -> typing.Sequence[Phenopacket]:
         # return fully-assembled Phenopacket messages, not intermediate parts.
         raise NotImplementedError
-
 
 class DefaultMapper(TableMapper):
     def __init__(self, hpo: hpotk.MinimalOntology, strict_variants: bool = False):
@@ -157,13 +131,13 @@ class DefaultMapper(TableMapper):
 
         """
         # TODO: implement the placeholders I am going to temporarily call
+        # Map each selected sheet to domain-specific records via the table-level wrappers
+        # The wrappers handle index→patient id normalization and any sheet-level checks then delegate to the row mappers.
         typed_tables = self._choose_named_tables(tables, notepad)
         genotype_records = self._map_genotype_table(typed_tables.genotype, notepad)
         phenotype_records = self._map_phenotype_table(typed_tables.phenotype, notepad)
         disease_records = self._map_diseases_table(typed_tables.diseases, notepad)
-        measurement_records = self._map_measurements_table(
-            typed_tables.measurements, notepad
-        )
+        measurement_records = self._map_measurements_table(typed_tables.measurements, notepad)
         biosample_records = self._map_biosamples_table(typed_tables.biosamples, notepad)
 
         grouped = self._group_records_by_patient(
@@ -179,51 +153,6 @@ class DefaultMapper(TableMapper):
             for patient_id, bundle in grouped.items()
         ]
         return packets
-
-    def _check_hgvs_consistency(
-        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
-    ) -> None:
-        """
-        If both raw coordinates and HGVS notation are present, ensure that the genotype notations match
-        """
-
-        pattern = re.compile(
-            r"^(?:chr)?(?P<chromosome_name>[^:]+):g\.(?P<mutation_position>\d+)"
-            r"(?P<reference_allele>[ACGT]+)>(?P<alternative_allele>[ACGT]+)$",
-            re.IGNORECASE,
-        )
-
-        for idx, row in df.iterrows():
-            hgvs = str(row.get("hgvsg", "")).strip()
-            m = pattern.match(hgvs)
-            if not m:
-                # always treat malformed HGVS as an error
-                notepad.add_error(
-                    f"Sheet {sheet_name!r}, row {idx}: malformed HGVS g. notation {hgvs!r}"
-                )
-                continue
-            chromosome_name = m.group("chromosome_name")
-            mutation_position = int(m.group("mutation_position"))
-            reference_allele = m.group("reference_allele")
-            alternative_allele = m.group("alternative_allele")
-
-            # compare against raw columns
-            mismatch_msg = (
-                f"Sheet {sheet_name!r}, row {idx}: HGVS '{hgvs}' disagrees with "
-                f"raw ({row['chromosome']}:{row['start_position']}-"
-                f"{row['end_position']} {row['reference']}>{row['alternate']})"
-            )
-            if (
-                str(row["chromosome"]) != chromosome_name
-                or int(row["start_position"]) != mutation_position
-                or int(row["end_position"]) != mutation_position
-                or str(row["reference"]) != reference_allele
-                or str(row["alternate"]) != alternative_allele
-            ):
-                if self.strict_variants:
-                    notepad.add_error(mismatch_msg)
-                else:
-                    notepad.add_warning(mismatch_msg)
 
     def _prepare_sheet(self, df: pd.DataFrame, is_genotype: bool) -> pd.DataFrame:
         """Bring the index into a column and name it appropriately."""
@@ -385,30 +314,346 @@ class DefaultMapper(TableMapper):
 
         return records
 
-    def _map_disease(
+    def _check_hgvs_consistency(
         self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> None:
+        """
+        If both raw coordinates and HGVS notation are present, ensure that the genotype notations match
+        """
+
+        pattern = re.compile(
+            r"^(?:chr)?(?P<chromosome_name>[^:]+):g\.(?P<mutation_position>\d+)"
+            r"(?P<reference_allele>[ACGT]+)>(?P<alternative_allele>[ACGT]+)$",
+            re.IGNORECASE,
+        )
+
+        for idx, row in df.iterrows():
+            hgvs = str(row.get("hgvsg", "")).strip()
+            m = pattern.match(hgvs)
+            if not m:
+                # always treat malformed HGVS as an error
+                notepad.add_error(
+                    f"Sheet {sheet_name!r}, row {idx}: malformed HGVS g. notation {hgvs!r}"
+                )
+                continue
+            chromosome_name = m.group("chromosome_name")
+            mutation_position = int(m.group("mutation_position"))
+            reference_allele = m.group("reference_allele")
+            alternative_allele = m.group("alternative_allele")
+
+            # compare against raw columns
+            mismatch_msg = (
+                f"Sheet {sheet_name!r}, row {idx}: HGVS '{hgvs}' disagrees with "
+                f"raw ({row['chromosome']}:{row['start_position']}-"
+                f"{row['end_position']} {row['reference']}>{row['alternate']})"
+            )
+            if (
+                str(row["chromosome"]) != chromosome_name
+                or int(row["start_position"]) != mutation_position
+                or int(row["end_position"]) != mutation_position
+                or str(row["reference"]) != reference_allele
+                or str(row["alternate"]) != alternative_allele
+            ):
+                if self.strict_variants:
+                    notepad.add_error(mismatch_msg)
+                else:
+                    notepad.add_warning(mismatch_msg)
+
+    def _prepare_sheet_for_patient(self, df: pd.DataFrame, patient_id_column: str) -> pd.DataFrame:
+        """
+        Similar to _prepare_sheet, but used for sheets whose patient identifier column is named 'patient_ID' (diseases, measurements, biosamples).
+        This brings the current index into a named column so downstream mappers can access a consistent patient identifier.
+        """
+        working = df.reset_index()
+        original = working.columns[0]
+        return working.rename(columns={original: patient_id_column})
+
+    def _choose_named_tables(self, tables: dict[str, pd.DataFrame], notepad: Notepad) -> TypedTables:
+        """
+        Prefer explicit sheet names (plus common aliases).
+        """
+
+        def by_alias(kind: str) -> pd.DataFrame | None:
+            aliases = KNOWN_SHEET_ALIASES[kind]
+            for sheet_name, df in tables.items():
+                if sheet_name.strip().casefold() in aliases:
+                    return df
+            return None
+
+        selected = TypedTables(
+            genotype=by_alias("genotype"),
+            phenotype=by_alias("phenotype"),
+            diseases=by_alias("diseases"),
+            measurements=by_alias("measurements"),
+            biosamples=by_alias("biosamples"),
+        )
+
+        # Hard-minimum: at least genotype or phenotype must exist
+        if selected.genotype is None and selected.phenotype is None:
+            notepad.add_error("Missing required sheet: either 'genotype' or 'phenotype'.")
+
+        return selected
+
+    # Table-level wrapper mappers
+    def _map_genotype_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[Genotype]:
+        """
+        Sheet-level wrapper for Genotype rows:
+          - normalize index to 'genotype_patient_ID'
+          - optionally check HGVS vs raw coordinate consistency when both are present
+          - delegate row conversion to _map_genotype
+        """
+        if df is None:
+            return []
+        working = self._prepare_sheet(df, is_genotype=True)
+        columns_present = set(working.columns)
+        if RAW_VARIANT_COLUMNS.issubset(columns_present) and (HGVS_VARIANT_COLUMNS & columns_present):
+            self._check_hgvs_consistency("genotype", working, notepad)
+        return self._map_genotype("genotype", working, notepad)
+
+    def _map_phenotype_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[Phenotype]:
+        """
+        Sheet-level wrapper for Phenotype rows:
+          - normalize index to 'phenotype_patient_ID'
+          - delegate row conversion to _map_phenotype
+        """
+        if df is None:
+            return []
+        working = self._prepare_sheet(df, is_genotype=False)
+        return self._map_phenotype("phenotype", working, notepad)
+
+    def _map_diseases_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[DiseaseRecord]:
+        """
+        Sheet-level wrapper for Disease rows:
+          - normalize index to 'patient_ID'
+          - delegate row conversion to _map_disease
+        """
+        if df is None:
+            return []
+        working = self._prepare_sheet_for_patient(df, "patient_ID")
+        return self._map_disease("diseases", working, notepad)
+
+    def _map_measurements_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[MeasurementRecord]:
+        """
+        Sheet-level wrapper for Measurement rows:
+          - normalize index to 'patient_ID'
+          - delegate row conversion to _map_measurement
+        """
+        if df is None:
+            return []
+        working = self._prepare_sheet_for_patient(df, "patient_ID")
+        return self._map_measurement("measurements", working, notepad)
+
+    def _map_biosamples_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[BiosampleRecord]:
+        """
+        Sheet-level wrapper for Biosample rows:
+          - normalize index to 'patient_ID'
+          - delegate row conversion to _map_biosample
+        """
+        if df is None:
+            return []
+        working = self._prepare_sheet_for_patient(df, "patient_ID")
+        return self._map_biosample("biosamples", working, notepad)
+
+    def _map_disease(
+            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
     ) -> list[DiseaseRecord]:
-        # TODO: implement row→DiseaseRecord, row→MeasurementRecord conversion, and row→BiosampleRecord conversions
         """
         Map each row in a disease sheet to a DiseaseRecord.
+        Required columns: patient_ID, disease_term, disease_onset, disease_status.
+        Optional column: disease_label.
         """
-        # TODO: fix as this is not in use now: records: list[DiseaseRecord] = []
-        raise NotImplementedError
+        records: list[DiseaseRecord] = []
+        required_columns = {"patient_ID", "disease_term", "disease_onset", "disease_status"}
+        missing = required_columns - set(df.columns)
+        if missing:
+            notepad.add_error(f"Sheet {sheet_name!r}: missing required columns: {sorted(missing)}")
+            return records
+
+        for index, row in df.iterrows():
+            try:
+                disease_record = DiseaseRecord(
+                    patient_ID=str(row["patient_ID"]),
+                    disease_term=str(row["disease_term"]).strip(),
+                    disease_label=(str(row.get("disease_label", "")).strip() or None),
+                    disease_onset=str(row["disease_onset"]).strip(),
+                    disease_status=bool(row["disease_status"]),
+                )
+                records.append(disease_record)
+            except (ValueError, TypeError) as exception:
+                notepad.add_error(f"Sheet {sheet_name!r}, row {index}: {exception}")
+        return records
 
     def _map_measurement(
-        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
     ) -> list[MeasurementRecord]:
         """
         Map each row in a measurement sheet to a MeasurementRecord.
+        Required columns: patient_ID, measurement_type, measurement_value, measurement_unit.
+        Optional column: measurement_timestamp (numeric values are prefixed with 'T' for consistency).
         """
-        # TODO: fix as this is not in use now: records: list[MeasurementRecord] = []
-        raise NotImplementedError
+        records: list[MeasurementRecord] = []
+        required_columns = {"patient_ID", "measurement_type", "measurement_value", "measurement_unit"}
+        missing = required_columns - set(df.columns)
+        if missing:
+            notepad.add_error(f"Sheet {sheet_name!r}: missing required columns: {sorted(missing)}")
+            return records
+
+        for index, row in df.iterrows():
+            try:
+                raw_timestamp = row.get("measurement_timestamp", "")
+                if isinstance(raw_timestamp, (int, float)) and not str(raw_timestamp).startswith("T"):
+                    measurement_timestamp = f"T{int(raw_timestamp)}"
+                else:
+                    measurement_timestamp = str(raw_timestamp).strip() if pd.notna(raw_timestamp) else None
+
+                measurement_record = MeasurementRecord(
+                    patient_ID=str(row["patient_ID"]),
+                    measurement_type=str(row["measurement_type"]).strip(),
+                    measurement_value=float(row["measurement_value"]),
+                    measurement_unit=str(row["measurement_unit"]).strip(),
+                    measurement_timestamp=measurement_timestamp,
+                )
+                records.append(measurement_record)
+            except (ValueError, TypeError) as exception:
+                notepad.add_error(f"Sheet {sheet_name!r}, row {index}: {exception}")
+        return records
 
     def _map_biosample(
-        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
     ) -> list[BiosampleRecord]:
         """
         Map each row in a biosample sheet to a BiosampleRecord.
+        Required columns: patient_ID, biosample_id, biosample_type, collection_date.
+        Numeric collection_date values are prefixed with 'T' for consistency with phenotype dates.
         """
-        # TODO: fix as this is not in use now: records: list[BiosampleRecord] = []
-        raise NotImplementedError
+        records: list[BiosampleRecord] = []
+        required_columns = {"patient_ID", "biosample_id", "biosample_type", "collection_date"}
+        missing = required_columns - set(df.columns)
+        if missing:
+            notepad.add_error(f"Sheet {sheet_name!r}: missing required columns: {sorted(missing)}")
+            return records
+
+        for index, row in df.iterrows():
+            try:
+                raw_collection_date = row["collection_date"]
+                if isinstance(raw_collection_date, (int, float)) and not str(raw_collection_date).startswith("T"):
+                    collection_date = f"T{int(raw_collection_date)}"
+                else:
+                    collection_date = str(raw_collection_date).strip()
+
+                biosample_record = BiosampleRecord(
+                    patient_ID=str(row["patient_ID"]),
+                    biosample_id=str(row["biosample_id"]).strip(),
+                    biosample_type=str(row["biosample_type"]).strip(),
+                    collection_date=collection_date,
+                )
+                records.append(biosample_record)
+            except (ValueError, TypeError) as exception:
+                notepad.add_error(f"Sheet {sheet_name!r}, row {index}: {exception}")
+        return records
+
+    # Grouping and phenopacket construction
+    def _group_records_by_patient(self, genotype_records: list[Genotype], phenotype_records: list[Phenotype], disease_records: list[DiseaseRecord], measurement_records: list[MeasurementRecord], biosample_records: list[BiosampleRecord], ) -> dict[str, dict[str, list]]:
+        """
+        Group all domain records by patient identifier, producing a bundle per patient
+        """
+        grouped = defaultdict(
+            lambda: {
+                "genotype_records": [],
+                "phenotype_records": [],
+                "disease_records": [],
+                "measurement_records": [],
+                "biosample_records": [],
+            }
+        )
+        for genotype in genotype_records:
+            grouped[genotype.genotype_patient_ID]["genotype_records"].append(genotype)
+        for phenotype in phenotype_records:
+            grouped[phenotype.phenotype_patient_ID]["phenotype_records"].append(phenotype)
+        for disease in disease_records:
+            grouped[disease.patient_ID]["disease_records"].append(disease)
+        for measurement in measurement_records:
+            grouped[measurement.patient_ID]["measurement_records"].append(measurement)
+        for biosample in biosample_records:
+            grouped[biosample.patient_ID]["biosample_records"].append(biosample)
+        return grouped
+
+    def construct_phenopacket_for_patient(self, patient_id: str, bundle: dict[str, list], notepad: Notepad) -> Phenopacket:
+        """
+        Build a Phenopacket for a single patient using their grouped records.
+        Field assignments follow the explicit naming and serialization style.
+        """
+        from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
+        import phenopackets.schema.v2 as pps2
+
+        phenopacket = Phenopacket()
+        phenopacket.id = patient_id
+        phenopacket.subject.id = patient_id
+
+        # Phenotypic features
+        for phenotype in bundle.get("phenotype_records", []):
+            feature = phenopacket.phenotypic_features.add()
+            feature.type.id = phenotype.HPO_ID
+            if not phenotype.status:
+                feature.excluded = True
+
+        # Genotype interpretations (minimal HGVS expression to start)
+        for interpretation_index, genotype_record in enumerate(bundle.get("genotype_records", [])):
+            interpretation = phenopacket.interpretations.add()
+            interpretation.id = f"{patient_id}-interpretation-{interpretation_index}"
+            interpretation.progress_status = interpretation.ProgressStatus.COMPLETED
+
+            genomic_interpretation_entry = interpretation.diagnosis.genomic_interpretations.add()
+            genomic_interpretation_entry.subject_or_biosample_id = patient_id
+            genomic_interpretation_entry.interpretation_status = (
+                genomic_interpretation_entry.InterpretationStatus.CONTRIBUTORY
+            )
+
+            variant_interpretation = genomic_interpretation_entry.variant_interpretation
+            variation_descriptor = variant_interpretation.variation_descriptor
+
+            # Add HGVS expression; set syntax enum when available
+            expression = variation_descriptor.expressions.add()
+            try:
+                expression.syntax = pps2.VariationDescriptor.Expression.HGVS
+            except AttributeError:
+                pass
+            expression.value = genotype_record.hgvsg or ""
+
+            # Optional: attempt to set a subset of location/alleles if supported
+            try:
+                location_context = variation_descriptor.location
+                location_context.interval.interval_type = (
+                    pps2.VariationDescriptor.Location.Interval.Type.EXACT
+                )
+                location_context.interval.start = genotype_record.start_position
+                location_context.interval.end = genotype_record.end_position
+                location_context.reference_sequence_id = genotype_record.chromosome
+                variation_descriptor.reference = genotype_record.reference
+                variation_descriptor.alternate = genotype_record.alternate
+            except AttributeError:
+                # Some library builds do not expose these submessages; try to skip gracefully if we cannot implement this feature.
+                pass
+
+        # Optional sections (diseases, measurements, biosamples).
+        # Keep assignments minimal and consistent with the earlier CLI code.
+        for disease_record in bundle.get("disease_records", []):
+            disease_message = phenopacket.diseases.add()
+            disease_message.term.id = disease_record.disease_term
+            if getattr(disease_record, "disease_label", None):
+                disease_message.term.label = disease_record.disease_label
+            # Onset/status message wiring can be expanded later as needed.
+
+        for measurement_record in bundle.get("measurement_records", []):
+            measurement_message = phenopacket.measurements.add()
+            measurement_message.type.id = measurement_record.measurement_type
+            # Depending on the installed protobuf version, value/unit/timestamp may require message types;
+            # keep this minimal for now (extend down the line).
+
+        for biosample_record in bundle.get("biosample_records", []):
+            biosample_message = phenopacket.biosamples.add()
+            biosample_message.id = biosample_record.biosample_id
+            biosample_message.type.id = biosample_record.biosample_type
+
+        return phenopacket
+

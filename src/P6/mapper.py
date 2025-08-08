@@ -15,16 +15,11 @@ import typing
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
 from stairval.notepad import Notepad
 
+from .biosample import BiosampleRecord
+from .disease import DiseaseRecord
 from .genotype import Genotype
+from .measurement import MeasurementRecord
 from .phenotype import Phenotype
-
-
-class TableMapper(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def apply_mapping(
-        self, tables: dict[str, pd.DataFrame], notepad: Notepad
-    ) -> typing.Sequence[Phenopacket]:
-        pass
 
 
 # For any renamed field, the two neighbors it must sit between
@@ -55,6 +50,12 @@ GENOTYPE_KEY_COLUMNS = {
 
 PHENOTYPE_KEY_COLUMNS = {"hpo_id", "date_of_observation", "status"}
 
+# Key columns to identify additional sheets
+DISEASE_KEY_COLUMNS = {"disease_term", "disease_onset"}
+MEASUREMENT_KEY_COLUMNS = {"measurement_type", "measurement_value", "measurement_unit"}
+BIOSAMPLE_KEY_COLUMNS = {"biosample_id", "biosample_type", "collection_date"}
+
+
 # Map raw zygosity abbreviations to allowed dataclass zygosity values
 ZYGOSITY_MAP = {
     "het": "heterozygous",
@@ -71,24 +72,71 @@ INHERITANCE_MAP = {
     "denovo": "de_novo_mutation",
 }
 
+# Check Variant column groups: allow either the full raw coordinates or any HGVS notation
+RAW_VARIANT_COLUMNS = {
+    "chromosome",
+    "start_position",
+    "end_position",
+    "reference",
+    "alternate",
+}
+HGVS_VARIANT_COLUMNS = {"hgvsg", "hgvsc", "hgvsp"}
+# minimal base columns to call something a genotype sheet (we bring the index in later)
+GENOTYPE_BASE_COLUMNS = {"contact_email", "phasing"}
+
+
+class TableMapper(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def apply_mapping(
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad
+    ) -> typing.Sequence[Phenopacket]:
+        pass
+
 
 class DefaultMapper(TableMapper):
-    def __init__(self, hpo: hpotk.MinimalOntology):
+    def __init__(self, hpo: hpotk.MinimalOntology, strict_variants: bool = False):
+        """
+        - False: raw⇄HGVS mismatches are logged as WARNINGS
+        - True : raw⇄HGVS mismatches are logged as ERRORS
+        """
         self._hpo = hpo
+        self.strict_variants = strict_variants
 
     def apply_mapping(
         self, tables: dict[str, pd.DataFrame], notepad: Notepad
-    ) -> tuple[list[Genotype], list[Phenotype]]:
+    ) -> tuple[
+        list[Genotype],
+        list[Phenotype],
+        list[DiseaseRecord],
+        list[MeasurementRecord],
+        list[BiosampleRecord],
+    ]:
+        """
+        1) classify each sheet as genotype / phenotype / disease / measurement / biosample
+        2) call the matching mapper
+        """
+        # initialize the lists to return
         genotype_records: list[Genotype] = []
         phenotype_records: list[Phenotype] = []
+        disease_records: list[DiseaseRecord] = []
+        measurement_records: list[MeasurementRecord] = []
+        biosample_records: list[BiosampleRecord] = []
 
         for sheet_name, df in tables.items():
             columns = set(df.columns)
+            """ 1) classify: does this look like genotype, phenotype, or something to skip? """
+            has_raw = RAW_VARIANT_COLUMNS.issubset(columns)
+            has_hgvs = bool(HGVS_VARIANT_COLUMNS & columns)
             """Send each sheet to the right extractor and collect all records."""
-            is_genotype_sheet = GENOTYPE_KEY_COLUMNS.issubset(columns)
+            is_genotype_sheet = GENOTYPE_BASE_COLUMNS.issubset(columns) and (
+                has_raw or has_hgvs
+            )
             is_phenotype_sheet = PHENOTYPE_KEY_COLUMNS.issubset(columns)
 
             if is_genotype_sheet == is_phenotype_sheet:
+                # if we have both raw & HGVS notations, we need to validate that they match
+                if has_raw and has_hgvs:
+                    self._check_hgvs_consistency(sheet_name, df, notepad)
                 # ambiguous sheet should give a warning instead of an error
                 notepad.add_warning(
                     f"Skipping {sheet_name!r}: cannot unambiguously classify as genotype or phenotype"
@@ -107,7 +155,73 @@ class DefaultMapper(TableMapper):
                     self._map_phenotype(sheet_name, working, notepad)
                 )
 
-        return genotype_records, phenotype_records
+            # New Fields
+            if DISEASE_KEY_COLUMNS.issubset(columns):
+                disease_records.extend(self._map_disease(sheet_name, working, notepad))
+                continue
+            if MEASUREMENT_KEY_COLUMNS.issubset(columns):
+                measurement_records.extend(
+                    self._map_measurement(sheet_name, working, notepad)
+                )
+                continue
+            if BIOSAMPLE_KEY_COLUMNS.issubset(columns):
+                biosample_records.extend(
+                    self._map_biosample(sheet_name, working, notepad)
+                )
+                continue
+
+        return (
+            genotype_records,
+            phenotype_records,
+            disease_records,
+            measurement_records,
+            biosample_records,
+        )
+
+    def _check_hgvs_consistency(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> None:
+        """
+        If both raw coordinates and HGVS notation are present, ensure that the genotype notations match
+        """
+
+        pattern = re.compile(
+            r"^(?:chr)?(?P<chromosome_name>[^:]+):g\.(?P<mutation_position>\d+)"
+            r"(?P<reference_allele>[ACGT]+)>(?P<alternative_allele>[ACGT]+)$",
+            re.IGNORECASE,
+        )
+
+        for idx, row in df.iterrows():
+            hgvs = str(row.get("hgvsg", "")).strip()
+            m = pattern.match(hgvs)
+            if not m:
+                # always treat malformed HGVS as an error
+                notepad.add_error(
+                    f"Sheet {sheet_name!r}, row {idx}: malformed HGVS g. notation {hgvs!r}"
+                )
+                continue
+            chromosome_name = m.group("chromosome_name")
+            mutation_position = int(m.group("mutation_position"))
+            reference_allele = m.group("reference_allele")
+            alternative_allele = m.group("alternative_allele")
+
+            # compare against raw columns
+            mismatch_msg = (
+                f"Sheet {sheet_name!r}, row {idx}: HGVS '{hgvs}' disagrees with "
+                f"raw ({row['chromosome']}:{row['start_position']}-"
+                f"{row['end_position']} {row['reference']}>{row['alternate']})"
+            )
+            if (
+                str(row["chromosome"]) != chromosome_name
+                or int(row["start_position"]) != mutation_position
+                or int(row["end_position"]) != mutation_position
+                or str(row["reference"]) != reference_allele
+                or str(row["alternate"]) != alternative_allele
+            ):
+                if self.strict_variants:
+                    notepad.add_error(mismatch_msg)
+                else:
+                    notepad.add_warning(mismatch_msg)
 
     def _prepare_sheet(self, df: pd.DataFrame, is_genotype: bool) -> pd.DataFrame:
         """Bring the index into a column and name it appropriately."""
@@ -268,3 +382,31 @@ class DefaultMapper(TableMapper):
                     notepad.add_warning(msg)
 
         return records
+
+    def _map_disease(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[DiseaseRecord]:
+        # TODO: implement row→DiseaseRecord, row→MeasurementRecord conversion, and row→BiosampleRecord conversions
+        """
+        Map each row in a disease sheet to a DiseaseRecord.
+        """
+        # TODO: fix as this is not in use now: records: list[DiseaseRecord] = []
+        raise NotImplementedError
+
+    def _map_measurement(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[MeasurementRecord]:
+        """
+        Map each row in a measurement sheet to a MeasurementRecord.
+        """
+        # TODO: fix as this is not in use now: records: list[MeasurementRecord] = []
+        raise NotImplementedError
+
+    def _map_biosample(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[BiosampleRecord]:
+        """
+        Map each row in a biosample sheet to a BiosampleRecord.
+        """
+        # TODO: fix as this is not in use now: records: list[BiosampleRecord] = []
+        raise NotImplementedError

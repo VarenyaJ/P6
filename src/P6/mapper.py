@@ -12,6 +12,8 @@ import pandas as pd
 import re
 import typing
 
+from collections import defaultdict
+from dataclasses import dataclass
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
 from stairval.notepad import Notepad
 
@@ -84,6 +86,45 @@ HGVS_VARIANT_COLUMNS = {"hgvsg", "hgvsc", "hgvsp"}
 # minimal base columns to call something a genotype sheet (we bring the index in later)
 GENOTYPE_BASE_COLUMNS = {"contact_email", "phasing"}
 
+# Friendly aliases → reduces friction while keeping behavior explicit
+KNOWN_SHEET_ALIASES: dict[str, set[str]] = {"genotype": {"genotype", "variants", "variant", "geno"}, "phenotype": {"phenotype", "hpo", "pheno"}, "diseases": {"disease", "diseases"}, "measurements": {"measurement", "measurements", "labs"}, "biosamples": {"biosample", "biosamples", "samples"}}
+
+@dataclass
+class TypedTables:
+    """
+    Explicit, typed access to workbook sheets.
+    Any field can be `None`, meaning that the sheet not provided.
+    """
+    genotype: pd.DataFrame | None
+    phenotype: pd.DataFrame | None
+    diseases: pd.DataFrame | None
+    measurements: pd.DataFrame | None
+    biosamples: pd.DataFrame | None
+
+def _choose_named_tables(self, tables: dict[str, pd.DataFrame], notepad: Notepad) -> TypedTables:
+    """
+    Prefer explicit sheet names (plus common aliases).
+    """
+    def by_alias(kind: str) -> pd.DataFrame | None:
+        aliases = KNOWN_SHEET_ALIASES[kind]
+        for sheet_name, df in tables.items():
+            if sheet_name.strip().casefold() in aliases:
+                return df
+        return None
+
+    selected = TypedTables(
+        genotype=by_alias("genotype"),
+        phenotype=by_alias("phenotype"),
+        diseases=by_alias("diseases"),
+        measurements=by_alias("measurements"),
+        biosamples=by_alias("biosamples"),
+    )
+
+    # Hard-minimum: at least genotype or phenotype must exist
+    if selected.genotype is None and selected.phenotype is None:
+        notepad.add_error("Missing required sheet: either 'genotype' or 'phenotype'.")
+
+    return selected
 
 class TableMapper(metaclass=abc.ABCMeta):
     @abc.abstractmethod

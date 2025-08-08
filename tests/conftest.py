@@ -1,10 +1,6 @@
-import gzip
 import hpotk
 import os
 import pytest
-import shutil
-
-from pathlib import Path
 
 
 @pytest.fixture(scope="session")
@@ -22,8 +18,8 @@ def fpath_hpo(fpath_test_dir: str) -> str:
 
 @pytest.fixture(scope="session")
 def hpo(fpath_hpo: str) -> hpotk.MinimalOntology:
-    '''
+    """
     The PATH to a JSON file of HPO terms and IDs.
     `hpotk` should be able to read this directly without manual decompression.
-    '''
+    """
     return hpotk.load_minimal_ontology(fpath_hpo)

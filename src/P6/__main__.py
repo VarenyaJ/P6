@@ -208,7 +208,9 @@ def parse_excel(
         count += 1
         # Use mapper.stats["patients"] instead of len(records_by_patient)
     # apply_mapping.9) Final summary
-    click.echo(f"Wrote {mapper.stats.get('patients', count)} phenopacket files to {output_dir}")
+    click.echo(
+        f"Wrote {mapper.stats.get('patients', count)} phenopacket files to {output_dir}"
+    )
     # TODO: Come back and add more top-level fields
 
     # 5) Report any errors or warnings

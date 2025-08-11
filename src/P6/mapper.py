@@ -16,18 +16,17 @@ from collections import defaultdict
 from dataclasses import dataclass
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
 from stairval.notepad import Notepad
-from typing import Sequence, Dict, List, TypeVar, Tuple
-
-T = TypeVar("T")
-RowParseResult = Tuple[List[T], List[hpotk.TermId]]
-# gives us one consistent return shape: (parsed_items, aux_ids_for_batch_validation)
-
+from typing import List, TypeVar, Tuple
 
 from .biosample import BiosampleRecord
 from .disease import DiseaseRecord
 from .genotype import Genotype
 from .measurement import MeasurementRecord
 from .phenotype import Phenotype
+
+T = TypeVar("T")
+RowParseResult = Tuple[List[T], List[hpotk.TermId]]
+# gives us one consistent return shape: (parsed_items, aux_ids_for_batch_validation)
 
 # For any renamed field, the two neighbors it must sit between
 EXPECTED_COLUMN_NEIGHBORS = {
@@ -91,11 +90,13 @@ HGVS_VARIANT_COLUMNS = {"hgvsg", "hgvsc", "hgvsp"}
 GENOTYPE_BASE_COLUMNS = {"contact_email", "phasing"}
 
 # Friendly aliases → reduces friction while keeping behavior explicit
-KNOWN_SHEET_ALIASES: dict[str, set[str]] = {"genotype": {"genotype", "variants", "variant", "geno"},
-                                            "phenotype": {"phenotype", "hpo", "pheno"},
-                                            "diseases": {"disease", "diseases"},
-                                            "measurements": {"measurement", "measurements", "labs"},
-                                            "biosamples": {"biosample", "biosamples", "samples"}}
+KNOWN_SHEET_ALIASES: dict[str, set[str]] = {
+    "genotype": {"genotype", "variants", "variant", "geno"},
+    "phenotype": {"phenotype", "hpo", "pheno"},
+    "diseases": {"disease", "diseases"},
+    "measurements": {"measurement", "measurements", "labs"},
+    "biosamples": {"biosample", "biosamples", "samples"},
+}
 
 
 @dataclass
@@ -104,6 +105,7 @@ class TypedTables:
     Explicit, typed access to workbook sheets.
     Any field can be `None`, meaning that the sheet not provided.
     """
+
     genotype: pd.DataFrame | None
     phenotype: pd.DataFrame | None
     diseases: pd.DataFrame | None
@@ -114,7 +116,7 @@ class TypedTables:
 class TableMapper(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def apply_mapping(
-            self, tables: dict[str, pd.DataFrame], notepad: Notepad
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad
     ) -> typing.Sequence[Phenopacket]:
         # return fully-assembled Phenopacket messages, not intermediate parts.
         raise NotImplementedError
@@ -130,7 +132,7 @@ class DefaultMapper(TableMapper):
         self.strict_variants = strict_variants
 
     def apply_mapping(
-            self, tables: dict[str, pd.DataFrame], notepad: Notepad
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad
     ) -> list[Phenopacket]:
         """
         Process:
@@ -148,7 +150,9 @@ class DefaultMapper(TableMapper):
         genotype_records = self._map_genotype_table(typed_tables.genotype, notepad)
         phenotype_records = self._map_phenotype_table(typed_tables.phenotype, notepad)
         disease_records = self._map_diseases_table(typed_tables.diseases, notepad)
-        measurement_records = self._map_measurements_table(typed_tables.measurements, notepad)
+        measurement_records = self._map_measurements_table(
+            typed_tables.measurements, notepad
+        )
         biosample_records = self._map_biosamples_table(typed_tables.biosamples, notepad)
 
         # apply_mapping.6) Group results by patient
@@ -177,7 +181,7 @@ class DefaultMapper(TableMapper):
             "biosamples": len(biosample_records),
             "patients": len(grouped),
         }
-        
+
         return packets
 
     def _prepare_sheet(self, df: pd.DataFrame, is_genotype: bool) -> pd.DataFrame:
@@ -196,7 +200,11 @@ class DefaultMapper(TableMapper):
         - empty/NaN -> empty string
         """
         # Handle None, NaN, NaT, pandas NA, and empty/whitespace-only strings
-        if value is None or pd.isna(value) or (isinstance(value, str) and not value.strip()):
+        if (
+            value is None
+            or pd.isna(value)
+            or (isinstance(value, str) and not value.strip())
+        ):
             return ""
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             return f"T{int(value)}"
@@ -225,7 +233,9 @@ class DefaultMapper(TableMapper):
         return bool(value)
 
     @staticmethod
-    def parse_genotype_row(row: pd.Series, sheet_name: str, notepad: Notepad) -> RowParseResult[Genotype]:
+    def parse_genotype_row(
+        row: pd.Series, sheet_name: str, notepad: Notepad
+    ) -> RowParseResult[Genotype]:
         """
         Parse a single genotype row into zero or more Genotype dataclass instances.
         Returns ([], []) if validation fails for this row.
@@ -233,23 +243,35 @@ class DefaultMapper(TableMapper):
         genotypes: list[Genotype] = []
 
         # handle slash-separated zygosity and inheritance
-        list_of_zygosity_types = [zygosity_entry.strip().lower() for zygosity_entry in
-                                  str(row.get("zygosity", "")).split("/")]
-        list_of_inheritance_types = [inheritance_entry.strip().lower() for inheritance_entry in
-                                     str(row.get("inheritance", "")).split("/")]
+        list_of_zygosity_types = [
+            zygosity_entry.strip().lower()
+            for zygosity_entry in str(row.get("zygosity", "")).split("/")
+        ]
+        list_of_inheritance_types = [
+            inheritance_entry.strip().lower()
+            for inheritance_entry in str(row.get("inheritance", "")).split("/")
+        ]
 
         # zip will truncate to the shorter of the two, matching the previous behavior
-        for zygosity_type, inheritance_type in zip(list_of_zygosity_types, list_of_inheritance_types):
+        for zygosity_type, inheritance_type in zip(
+            list_of_zygosity_types, list_of_inheritance_types
+        ):
             if zygosity_type not in ZYGOSITY_MAP:
-                notepad.add_error(f"Sheet {sheet_name!r}: Unrecognized zygosity code {zygosity_type!r}")
+                notepad.add_error(
+                    f"Sheet {sheet_name!r}: Unrecognized zygosity code {zygosity_type!r}"
+                )
                 return [], []  # bail on this row
             if inheritance_type not in INHERITANCE_MAP:
-                notepad.add_error(f"Sheet {sheet_name!r}: Unrecognized inheritance code {inheritance_type!r}")
+                notepad.add_error(
+                    f"Sheet {sheet_name!r}: Unrecognized inheritance code {inheritance_type!r}"
+                )
                 return [], []  # bail on this row
 
             # allow missing/NaN contact_email → substitute dummy
             raw_email = row.get("contact_email")
-            contact_email = ("unknown@example.com" if pd.isna(raw_email) else str(raw_email).strip())
+            contact_email = (
+                "unknown@example.com" if pd.isna(raw_email) else str(raw_email).strip()
+            )
 
             try:
                 genotypes.append(
@@ -267,7 +289,7 @@ class DefaultMapper(TableMapper):
                         hgvsc=str(row["hgvsc"]),
                         hgvsp=str(row["hgvsp"]),
                         zygosity=ZYGOSITY_MAP[zygosity_type],
-                        inheritance=INHERITANCE_MAP[inheritance_type]
+                        inheritance=INHERITANCE_MAP[inheritance_type],
                     )
                 )
             except (ValueError, TypeError) as e:
@@ -277,7 +299,9 @@ class DefaultMapper(TableMapper):
         return genotypes, []  # no batch IDs for genotypes (yet)
 
     @staticmethod
-    def parse_phenotype_row(row: pd.Series, hpo: hpotk.MinimalOntology, sheet_name: str, notepad: Notepad) -> RowParseResult[Phenotype]:
+    def parse_phenotype_row(
+        row: pd.Series, hpo: hpotk.MinimalOntology, sheet_name: str, notepad: Notepad
+    ) -> RowParseResult[Phenotype]:
         """
         Parse a single phenotype row into zero or more Phenotype dataclasses.
         Also return any parsed TermIds so the caller can run batch validators later.
@@ -292,7 +316,9 @@ class DefaultMapper(TableMapper):
         # Gracefully handle common placeholder "NAD" (No Abnormality Detected):
         # this is *not* an HPO term; skip the row and emit a warning instead of erroring out.
         if hpo_cell.upper() == "NAD":
-            notepad.add_warning(f"Sheet {sheet_name!r}: 'NAD' encountered – skipping phenotype row")
+            notepad.add_warning(
+                f"Sheet {sheet_name!r}: 'NAD' encountered – skipping phenotype row"
+            )
             return [], []
 
         # Parse optional label and digits; extract the last token (it should just be the HPO code), case-insensitive
@@ -310,7 +336,9 @@ class DefaultMapper(TableMapper):
             re.VERBOSE | re.IGNORECASE,
         )
         if not m:
-            notepad.add_error(f"Sheet {sheet_name!r}: Cannot parse HPO term+ID from {hpo_cell!r}")
+            notepad.add_error(
+                f"Sheet {sheet_name!r}: Cannot parse HPO term+ID from {hpo_cell!r}"
+            )
             return [], []
 
         raw_label = m.group("label").strip()
@@ -340,20 +368,27 @@ class DefaultMapper(TableMapper):
         # 3) The IDs must exist in the ontology:
         term = hpo.get_term(term_id)
         if term is None:
-            notepad.add_warning(f"Sheet {sheet_name!r}: HPO ID {curie!r} not found in ontology")
+            notepad.add_warning(
+                f"Sheet {sheet_name!r}: HPO ID {curie!r} not found in ontology"
+            )
         else:
             # 4) If the term is obsolete, flag it:
             if term.is_obsolete:
                 replacements = ", ".join(str(t) for t in term.alt_term_ids)
-                notepad.add_warning(f"Sheet {sheet_name!r}: {curie!r} is obsolete; use {replacements}")
+                notepad.add_warning(
+                    f"Sheet {sheet_name!r}: {curie!r} is obsolete; use {replacements}"
+                )
             # 5) If they gave a label, check that it matches (case-insensitive):
             if raw_label and raw_label.lower() != term.name.lower():
                 notepad.add_warning(
-                    f"Sheet {sheet_name!r}: label {raw_label!r} does not match ontology name {term.name!r}")
+                    f"Sheet {sheet_name!r}: label {raw_label!r} does not match ontology name {term.name!r}"
+                )
 
         return phenotypes, term_ids
 
-    def _map_genotype(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[Genotype]:
+    def _map_genotype(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[Genotype]:
         records: list[Genotype] = []
         for _, row in df.iterrows():
             # Parse this row into zero or more Genotype records
@@ -361,13 +396,17 @@ class DefaultMapper(TableMapper):
             records.extend(row_records)
         return records
 
-    def _map_phenotype(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[Phenotype]:
+    def _map_phenotype(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[Phenotype]:
         records: list[Phenotype] = []
         # Collect every HPO ID in this sheet, so we can validate propagation later:
         all_ids: list[hpotk.TermId] = []
 
         for _, row in df.iterrows():
-            row_records, row_term_ids = self.parse_phenotype_row(row, self._hpo, sheet_name, notepad)
+            row_records, row_term_ids = self.parse_phenotype_row(
+                row, self._hpo, sheet_name, notepad
+            )
             # Each parser returns lists; extend the accumulators.
             records.extend(row_records)
             all_ids.extend(row_term_ids)
@@ -391,7 +430,9 @@ class DefaultMapper(TableMapper):
         return records
 
     @staticmethod
-    def check_hgvs_consistency(item: pd.Series, sheet_name: str, notepad: Notepad, strict: bool) -> None:
+    def check_hgvs_consistency(
+        item: pd.Series, sheet_name: str, notepad: Notepad, strict: bool
+    ) -> None:
         """
         If both raw coordinates and HGVS notation are present, ensure that the genotype notations match
         """
@@ -403,7 +444,9 @@ class DefaultMapper(TableMapper):
         hgvs = str(item.get("hgvsg", "")).strip()
         m = pattern.match(hgvs)
         if not m:
-            notepad.add_error(f"Sheet {sheet_name!r}: malformed HGVS g. notation {hgvs!r}")
+            notepad.add_error(
+                f"Sheet {sheet_name!r}: malformed HGVS g. notation {hgvs!r}"
+            )
             return
 
         # mismatch = (str(item["chromosome"]) != m.group("chromosome_name") or int(item["start_position"]) != int(m.group("mutation_position")) or int(item["end_position"]) != int(m.group("mutation_position")) or str(item["reference"]) != m.group("reference_allele") or str(item["alternate"]) != m.group("alternative_allele")
@@ -426,16 +469,27 @@ class DefaultMapper(TableMapper):
         # - BED-like SNV:  start == pos-1 and end == pos
         start = int(item["start_position"])
         end = int(item["end_position"])
-        snv_matches = (start == pos_hgvs and end == pos_hgvs) or (start == pos_hgvs - 1 and end == pos_hgvs)
-        mismatch = (chrom_cell != chrom_hgvs or not snv_matches or ref_cell != ref_hgvs or alt_cell != alt_hgvs)
+        snv_matches = (start == pos_hgvs and end == pos_hgvs) or (
+            start == pos_hgvs - 1 and end == pos_hgvs
+        )
+        mismatch = (
+            chrom_cell != chrom_hgvs
+            or not snv_matches
+            or ref_cell != ref_hgvs
+            or alt_cell != alt_hgvs
+        )
 
         if mismatch:
-            msg = (f"Sheet {sheet_name!r}: HGVS '{hgvs}' disagrees with "
-                   f"raw ({item['chromosome']}:{item['start_position']}-"
-                   f"{item['end_position']} {item['reference']}>{item['alternate']})")
+            msg = (
+                f"Sheet {sheet_name!r}: HGVS '{hgvs}' disagrees with "
+                f"raw ({item['chromosome']}:{item['start_position']}-"
+                f"{item['end_position']} {item['reference']}>{item['alternate']})"
+            )
             (notepad.add_error if strict else notepad.add_warning)(msg)
 
-    def _prepare_sheet_for_patient(self, df: pd.DataFrame, patient_id_column: str) -> pd.DataFrame:
+    def _prepare_sheet_for_patient(
+        self, df: pd.DataFrame, patient_id_column: str
+    ) -> pd.DataFrame:
         """
         Similar to _prepare_sheet, but used for sheets whose patient identifier column is named 'patient_ID' (diseases, measurements, biosamples).
         This brings the current index into a named column so downstream mappers can access a consistent patient identifier.
@@ -444,7 +498,9 @@ class DefaultMapper(TableMapper):
         original = working.columns[0]
         return working.rename(columns={original: patient_id_column})
 
-    def _choose_named_tables(self, tables: dict[str, pd.DataFrame], notepad: Notepad) -> TypedTables:
+    def _choose_named_tables(
+        self, tables: dict[str, pd.DataFrame], notepad: Notepad
+    ) -> TypedTables:
         """
         Prefer explicit sheet names (plus common aliases).
         """
@@ -466,12 +522,16 @@ class DefaultMapper(TableMapper):
 
         # Hard-minimum: at least genotype or phenotype must exist
         if selected.genotype is None and selected.phenotype is None:
-            notepad.add_error("Missing required sheet: either 'genotype' or 'phenotype'.")
+            notepad.add_error(
+                "Missing required sheet: either 'genotype' or 'phenotype'."
+            )
 
         return selected
 
     # Table-level wrapper mappers
-    def _map_genotype_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[Genotype]:
+    def _map_genotype_table(
+        self, df: pd.DataFrame | None, notepad: Notepad
+    ) -> list[Genotype]:
         """
         Sheet-level wrapper for Genotype rows:
           - normalize index to 'genotype_patient_ID'
@@ -494,22 +554,24 @@ class DefaultMapper(TableMapper):
             self.check_hgvs_consistency(row, "genotype", notepad, self.strict_variants)
 
         # Must have the base columns, plus EITHER raw coordinates OR at least one HGVS field.
-        #if not GENOTYPE_BASE_COLUMNS.issubset(have):
-            #missing = sorted(GENOTYPE_BASE_COLUMNS - have)
-            #notepad.add_error(f"Sheet 'genotype': missing required base columns: {missing}")
-            #return []
-        #if not (RAW_VARIANT_COLUMNS.issubset(have) or (HGVS_VARIANT_COLUMNS & have)):
-            #notepad.add_error("Sheet 'genotype': provide either all raw coordinates ", f"{sorted(RAW_VARIANT_COLUMNS)} or at least one HGVS column ", f"from {sorted(HGVS_VARIANT_COLUMNS)}")
-            #return []
+        # if not GENOTYPE_BASE_COLUMNS.issubset(have):
+        # missing = sorted(GENOTYPE_BASE_COLUMNS - have)
+        # notepad.add_error(f"Sheet 'genotype': missing required base columns: {missing}")
+        # return []
+        # if not (RAW_VARIANT_COLUMNS.issubset(have) or (HGVS_VARIANT_COLUMNS & have)):
+        # notepad.add_error("Sheet 'genotype': provide either all raw coordinates ", f"{sorted(RAW_VARIANT_COLUMNS)} or at least one HGVS column ", f"from {sorted(HGVS_VARIANT_COLUMNS)}")
+        # return []
         ## If BOTH groups are present, cross-check consistency:
-        #columns_present = have
-        #if RAW_VARIANT_COLUMNS.issubset(columns_present) and (HGVS_VARIANT_COLUMNS & columns_present):
-            #for _, row in working.iterrows():
-                #self.check_hgvs_consistency(row, "genotype", notepad, self.strict_variants)
+        # columns_present = have
+        # if RAW_VARIANT_COLUMNS.issubset(columns_present) and (HGVS_VARIANT_COLUMNS & columns_present):
+        # for _, row in working.iterrows():
+        # self.check_hgvs_consistency(row, "genotype", notepad, self.strict_variants)
 
         return self._map_genotype("genotype", working, notepad)
 
-    def _map_phenotype_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[Phenotype]:
+    def _map_phenotype_table(
+        self, df: pd.DataFrame | None, notepad: Notepad
+    ) -> list[Phenotype]:
         """
         Sheet-level wrapper for Phenotype rows:
           - normalize index to 'phenotype_patient_ID'
@@ -520,12 +582,16 @@ class DefaultMapper(TableMapper):
         working = self._prepare_sheet(df, is_genotype=False)
         missing = PHENOTYPE_KEY_COLUMNS - set(working.columns)
         if missing:
-            notepad.add_error(f"Sheet 'phenotype': missing expected columns: {sorted(missing)}")
+            notepad.add_error(
+                f"Sheet 'phenotype': missing expected columns: {sorted(missing)}"
+            )
             return []
 
         return self._map_phenotype("phenotype", working, notepad)
 
-    def _map_diseases_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[DiseaseRecord]:
+    def _map_diseases_table(
+        self, df: pd.DataFrame | None, notepad: Notepad
+    ) -> list[DiseaseRecord]:
         """
         Sheet-level wrapper for Disease rows:
           - normalize index to 'patient_ID'
@@ -536,7 +602,9 @@ class DefaultMapper(TableMapper):
         working = self._prepare_sheet_for_patient(df, "patient_ID")
         return self._map_disease("diseases", working, notepad)
 
-    def _map_measurements_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[MeasurementRecord]:
+    def _map_measurements_table(
+        self, df: pd.DataFrame | None, notepad: Notepad
+    ) -> list[MeasurementRecord]:
         """
         Sheet-level wrapper for Measurement rows:
           - normalize index to 'patient_ID'
@@ -547,7 +615,9 @@ class DefaultMapper(TableMapper):
         working = self._prepare_sheet_for_patient(df, "patient_ID")
         return self._map_measurement("measurements", working, notepad)
 
-    def _map_biosamples_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[BiosampleRecord]:
+    def _map_biosamples_table(
+        self, df: pd.DataFrame | None, notepad: Notepad
+    ) -> list[BiosampleRecord]:
         """
         Sheet-level wrapper for Biosample rows:
           - normalize index to 'patient_ID'
@@ -558,17 +628,26 @@ class DefaultMapper(TableMapper):
         working = self._prepare_sheet_for_patient(df, "patient_ID")
         return self._map_biosample("biosamples", working, notepad)
 
-    def _map_disease(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[DiseaseRecord]:
+    def _map_disease(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[DiseaseRecord]:
         """
         Map each row in a disease sheet to a DiseaseRecord.
         Required columns: patient_ID, disease_term, disease_onset, disease_status.
         Optional column: disease_label.
         """
         records: list[DiseaseRecord] = []
-        required_columns = {"patient_ID", "disease_term", "disease_onset", "disease_status"}
+        required_columns = {
+            "patient_ID",
+            "disease_term",
+            "disease_onset",
+            "disease_status",
+        }
         missing = required_columns - set(df.columns)
         if missing:
-            notepad.add_error(f"Sheet {sheet_name!r}: missing required columns: {sorted(missing)}")
+            notepad.add_error(
+                f"Sheet {sheet_name!r}: missing required columns: {sorted(missing)}"
+            )
             return records
 
         for index, row in df.iterrows():
@@ -585,22 +664,33 @@ class DefaultMapper(TableMapper):
                 notepad.add_error(f"Sheet {sheet_name!r}, row {index}: {exception}")
         return records
 
-    def _map_measurement(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[MeasurementRecord]:
+    def _map_measurement(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[MeasurementRecord]:
         """
         Map each row in a measurement sheet to a MeasurementRecord.
         Required columns: patient_ID, measurement_type, measurement_value, measurement_unit.
         Optional column: measurement_timestamp (numeric values are prefixed with 'T' for consistency).
         """
         records: list[MeasurementRecord] = []
-        required_columns = {"patient_ID", "measurement_type", "measurement_value", "measurement_unit"}
+        required_columns = {
+            "patient_ID",
+            "measurement_type",
+            "measurement_value",
+            "measurement_unit",
+        }
         missing = required_columns - set(df.columns)
         if missing:
-            notepad.add_error(f"Sheet {sheet_name!r}: missing required columns: {sorted(missing)}")
+            notepad.add_error(
+                f"Sheet {sheet_name!r}: missing required columns: {sorted(missing)}"
+            )
             return records
 
         for index, row in df.iterrows():
             try:
-                measurement_timestamp = self._normalize_time_like(row.get("measurement_timestamp")) or None
+                measurement_timestamp = (
+                    self._normalize_time_like(row.get("measurement_timestamp")) or None
+                )
 
                 measurement_record = MeasurementRecord(
                     patient_ID=str(row["patient_ID"]),
@@ -614,22 +704,33 @@ class DefaultMapper(TableMapper):
                 notepad.add_error(f"Sheet {sheet_name!r}, row {index}: {exception}")
         return records
 
-    def _map_biosample(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[BiosampleRecord]:
+    def _map_biosample(
+        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
+    ) -> list[BiosampleRecord]:
         """
         Map each row in a biosample sheet to a BiosampleRecord.
         Required columns: patient_ID, biosample_id, biosample_type, collection_date.
         Numeric collection_date values are prefixed with 'T' for consistency with phenotype dates.
         """
         records: list[BiosampleRecord] = []
-        required_columns = {"patient_ID", "biosample_id", "biosample_type", "collection_date"}
+        required_columns = {
+            "patient_ID",
+            "biosample_id",
+            "biosample_type",
+            "collection_date",
+        }
         missing = required_columns - set(df.columns)
         if missing:
-            notepad.add_error(f"Sheet {sheet_name!r}: missing required columns: {sorted(missing)}")
+            notepad.add_error(
+                f"Sheet {sheet_name!r}: missing required columns: {sorted(missing)}"
+            )
             return records
 
         for index, row in df.iterrows():
             try:
-                collection_date = self._normalize_time_like(row.get("collection_date")) or ""
+                collection_date = (
+                    self._normalize_time_like(row.get("collection_date")) or ""
+                )
 
                 biosample_record = BiosampleRecord(
                     patient_ID=str(row["patient_ID"]),
@@ -643,7 +744,14 @@ class DefaultMapper(TableMapper):
         return records
 
     # Grouping and phenopacket construction
-    def _group_records_by_patient(self, genotype_records: list[Genotype], phenotype_records: list[Phenotype], disease_records: list[DiseaseRecord], measurement_records: list[MeasurementRecord], biosample_records: list[BiosampleRecord], ) -> dict[str, dict[str, list]]:
+    def _group_records_by_patient(
+        self,
+        genotype_records: list[Genotype],
+        phenotype_records: list[Phenotype],
+        disease_records: list[DiseaseRecord],
+        measurement_records: list[MeasurementRecord],
+        biosample_records: list[BiosampleRecord],
+    ) -> dict[str, dict[str, list]]:
         """
         Group all domain records by patient identifier, producing a bundle per patient
         """
@@ -659,7 +767,9 @@ class DefaultMapper(TableMapper):
         for genotype in genotype_records:
             grouped[genotype.genotype_patient_ID]["genotype_records"].append(genotype)
         for phenotype in phenotype_records:
-            grouped[phenotype.phenotype_patient_ID]["phenotype_records"].append(phenotype)
+            grouped[phenotype.phenotype_patient_ID]["phenotype_records"].append(
+                phenotype
+            )
         for disease in disease_records:
             grouped[disease.patient_ID]["disease_records"].append(disease)
         for measurement in measurement_records:
@@ -668,8 +778,9 @@ class DefaultMapper(TableMapper):
             grouped[biosample.patient_ID]["biosample_records"].append(biosample)
         return grouped
 
-    def construct_phenopacket_for_patient(self, patient_id: str, bundle: dict[str, list],
-                                          notepad: Notepad) -> Phenopacket:
+    def construct_phenopacket_for_patient(
+        self, patient_id: str, bundle: dict[str, list], notepad: Notepad
+    ) -> Phenopacket:
         """
         Build a Phenopacket for a single patient using their grouped records.
         Field assignments follow the explicit naming and serialization style.
@@ -689,12 +800,16 @@ class DefaultMapper(TableMapper):
                 feature.excluded = True
 
         # Genotype interpretations (minimal HGVS expression to start)
-        for interpretation_index, genotype_record in enumerate(bundle.get("genotype_records", [])):
+        for interpretation_index, genotype_record in enumerate(
+            bundle.get("genotype_records", [])
+        ):
             interpretation = phenopacket.interpretations.add()
             interpretation.id = f"{patient_id}-interpretation-{interpretation_index}"
             interpretation.progress_status = interpretation.ProgressStatus.COMPLETED
 
-            genomic_interpretation_entry = interpretation.diagnosis.genomic_interpretations.add()
+            genomic_interpretation_entry = (
+                interpretation.diagnosis.genomic_interpretations.add()
+            )
             genomic_interpretation_entry.subject_or_biosample_id = patient_id
             genomic_interpretation_entry.interpretation_status = (
                 genomic_interpretation_entry.InterpretationStatus.CONTRIBUTORY

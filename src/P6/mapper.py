@@ -832,7 +832,11 @@ class DefaultMapper(TableMapper):
                 expression.syntax = pps2.VariationDescriptor.Expression.HGVS
             except AttributeError:
                 pass
-            expression.value = genotype_record.hgvsg or ""
+            # Normalize HGVS: tests expect no optional 'chr' prefix
+            hgvs_val = (genotype_record.hgvsg or "").strip()
+            if hgvs_val.lower().startswith("chr"):
+                hgvs_val = hgvs_val[3:]
+            expression.value = hgvs_val
 
             # Optional: attempt to set a subset of location/alleles if supported
             try:

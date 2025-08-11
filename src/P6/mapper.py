@@ -273,13 +273,17 @@ class DefaultMapper(TableMapper):
                 "unknown@example.com" if pd.isna(raw_email) else str(raw_email).strip()
             )
 
+            # Normalize chromosome: allow "16" but store "chr16"
+            # chrom_raw = str(row["chromosome"]).strip()
+            chrom = chrom_raw if chrom_raw.lower().startswith("chr") else f"chr{chrom_raw}"
             try:
                 genotypes.append(
                     Genotype(
                         genotype_patient_ID=str(row["genotype_patient_ID"]),
                         contact_email=contact_email,
                         phasing=DefaultMapper._to_bool(row.get("phasing")),
-                        chromosome=str(row["chromosome"]),
+                        #chromosome=str(row["chromosome"]),
+                        chromosome=chrom,
                         start_position=int(row["start_position"]),
                         end_position=int(row["end_position"]),
                         reference=str(row["reference"]),

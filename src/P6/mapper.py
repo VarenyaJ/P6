@@ -78,7 +78,7 @@ INHERITANCE_MAP = {
     "denovo": "de_novo_mutation",
 }
 
-# Check Variant column groups: allow either the full raw coordinates or any HGVS notation
+# Variant column groups used for validation and HGVS↔raw consistency checks
 RAW_VARIANT_COLUMNS = {
     "chromosome",
     "start_position",
@@ -151,6 +151,7 @@ class DefaultMapper(TableMapper):
         measurement_records = self._map_measurements_table(typed_tables.measurements, notepad)
         biosample_records = self._map_biosamples_table(typed_tables.biosamples, notepad)
 
+        # apply_mapping.6) Group results by patient
         grouped = self._group_records_by_patient(
             genotype_records,
             phenotype_records,
@@ -163,6 +164,20 @@ class DefaultMapper(TableMapper):
             self.construct_phenopacket_for_patient(patient_id, bundle, notepad)
             for patient_id, bundle in grouped.items()
         ]
+
+        # Back-compatability for CLI/tests:
+        # Expose simple counts without changing the return type.
+        # The CLI prints "Created N Genotype objects" / "Created N Phenotype objects"
+        # and the tests assert on those exact lines.
+        self.stats = {
+            "genotypes": len(genotype_records),
+            "phenotypes": len(phenotype_records),
+            "diseases": len(disease_records),
+            "measurements": len(measurement_records),
+            "biosamples": len(biosample_records),
+            "patients": len(grouped),
+        }
+        
         return packets
 
     def _prepare_sheet(self, df: pd.DataFrame, is_genotype: bool) -> pd.DataFrame:
@@ -273,6 +288,12 @@ class DefaultMapper(TableMapper):
 
         # normalize phenotype fields into valid strings
         hpo_cell = str(row.get("hpo_id", "")).strip()
+
+        # Gracefully handle common placeholder "NAD" (No Abnormality Detected):
+        # this is *not* an HPO term; skip the row and emit a warning instead of erroring out.
+        if hpo_cell.upper() == "NAD":
+            notepad.add_warning(f"Sheet {sheet_name!r}: 'NAD' encountered – skipping phenotype row")
+            return [], []
 
         # Parse optional label and digits; extract the last token (it should just be the HPO code), case-insensitive
         m = re.match(
@@ -399,13 +420,15 @@ class DefaultMapper(TableMapper):
         ref_hgvs = m.group("reference_allele").upper()
         alt_hgvs = m.group("alternative_allele").upper()
 
-        mismatch = (
-            chrom_cell != chrom_hgvs
-            or int(item["start_position"]) != pos_hgvs
-            or int(item["end_position"]) != pos_hgvs
-            or ref_cell != ref_hgvs
-            or alt_cell != alt_hgvs
-        )
+        # mismatch = (chrom_cell != chrom_hgvs or int(item["start_position"]) != pos_hgvs or int(item["end_position"]) != pos_hgvs or ref_cell != ref_hgvs or alt_cell != alt_hgvs)
+        # Accept both SNV conventions:
+        # - 1-based exact: start == end == pos
+        # - BED-like SNV:  start == pos-1 and end == pos
+        start = int(item["start_position"])
+        end = int(item["end_position"])
+        snv_matches = (start == pos_hgvs and end == pos_hgvs) or (start == pos_hgvs - 1 and end == pos_hgvs)
+        mismatch = (chrom_cell != chrom_hgvs or not snv_matches or ref_cell != ref_hgvs or alt_cell != alt_hgvs)
+
         if mismatch:
             msg = (f"Sheet {sheet_name!r}: HGVS '{hgvs}' disagrees with "
                    f"raw ({item['chromosome']}:{item['start_position']}-"

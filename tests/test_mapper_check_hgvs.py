@@ -24,7 +24,7 @@ def test_check_hgvs_consistency_ok_bed_like_and_chr_prefix():
     start=99, end=100 vs HGVS pos=100 is acceptable.
     Accept both 'chr1' and '1'.
     """
-    m = make_mapper()
+    # m = make_mapper()
     note = create_notepad("genotype")
     row = pd.Series(
         {
@@ -45,7 +45,7 @@ def test_check_hgvs_consistency_strict_errors_on_mismatch():
     """
     With strict_variants=True we should get an error when positions disagree.
     """
-    m = make_mapper(strict=True)
+    # m = make_mapper(strict=True)
     note = create_notepad("genotype")
     row = pd.Series(
         {

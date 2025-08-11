@@ -50,8 +50,8 @@ def test_apply_mapping_builds_phenopackets_and_stats():
     tables = {"genotype": geno, "phenotype": pheno}
     packets = mapper.apply_mapping(tables, note)
 
-    print("ERRS", list(note.errors()))
-    print("WARNS", list(note.warnings()))
+    # print("ERRS", list(note.errors()))
+    # print("WARNS", list(note.warnings()))
 
     # Stats should reflect 1 genotype + 1 phenotype for 1 patient
     assert mapper.stats["genotypes"] == 1

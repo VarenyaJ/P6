@@ -24,6 +24,8 @@ from .genotype import Genotype
 from .measurement import MeasurementRecord
 from .phenotype import Phenotype
 
+import phenopackets.schema.v2 as pps2
+
 T = TypeVar("T")
 RowParseResult = Tuple[List[T], List[hpotk.TermId]]
 # gives us one consistent return shape: (parsed_items, aux_ids_for_batch_validation)
@@ -795,25 +797,54 @@ class DefaultMapper(TableMapper):
         Build a Phenopacket for a single patient using their grouped records.
         Field assignments follow the explicit naming and serialization style.
         """
-        from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
-        import phenopackets.schema.v2 as pps2
 
         phenopacket = Phenopacket()
         phenopacket.id = patient_id
         phenopacket.subject.id = patient_id
 
-        # Phenotypic features
-        for phenotype in bundle.get("phenotype_records", []):
-            feature = phenopacket.phenotypic_features.add()
+        # 1) Phenotypic features
+        self._add_phenotypic_features(phenopacket, bundle.get("phenotype_records", []))
+
+        # 2) Genotype interpretations (minimal HGVS expression to start)
+        self._add_genotype_interpretations(
+            phenopacket, bundle.get("genotype_records", []), patient_id
+        )
+
+        # 3) Optional sections (diseases, measurements, biosamples).
+        # Keep assignments minimal and consistent with earlier CLI code.
+        self._add_diseases_to_packet(phenopacket, bundle.get("disease_records", []))
+        self._add_measurements_to_packet(
+            phenopacket, bundle.get("measurement_records", [])
+        )
+        self._add_biosamples_to_packet(phenopacket, bundle.get("biosample_records", []))
+
+        return phenopacket
+
+    # helper methods to keep complexity low and match explicit wiring style
+
+    @staticmethod
+    def _add_phenotypic_features(pkt, phenotypes: list) -> None:
+        """
+        Add PhenotypicFeature messages to the packet.
+        - Set term id
+        - Mark excluded if status is False
+        """
+        for phenotype in phenotypes:
+            feature = pkt.phenotypic_features.add()
             feature.type.id = phenotype.HPO_ID
             if not phenotype.status:
                 feature.excluded = True
 
-        # Genotype interpretations (minimal HGVS expression to start)
-        for interpretation_index, genotype_record in enumerate(
-            bundle.get("genotype_records", [])
-        ):
-            interpretation = phenopacket.interpretations.add()
+    @staticmethod
+    def _add_genotype_interpretations(pkt, genotypes: list, patient_id: str) -> None:
+        """
+        Add Interpretation → Diagnosis → GenomicInterpretation blocks.
+        Minimal VariationDescriptor with HGVS expression; set optional
+        location/alleles when supported by the installed protobufs.
+        """
+
+        for interpretation_index, genotype_record in enumerate(genotypes):
+            interpretation = pkt.interpretations.add()
             interpretation.id = f"{patient_id}-interpretation-{interpretation_index}"
             interpretation.progress_status = interpretation.ProgressStatus.COMPLETED
 
@@ -825,20 +856,23 @@ class DefaultMapper(TableMapper):
                 genomic_interpretation_entry.InterpretationStatus.CONTRIBUTORY
             )
 
+            # VariationDescriptor with HGVS expression
             variant_interpretation = genomic_interpretation_entry.variant_interpretation
             variation_descriptor = variant_interpretation.variation_descriptor
 
-            # Add HGVS expression; set syntax enum when available
             expression = variation_descriptor.expressions.add()
+            # Attempt to set the HGVS syntax enum if available
             try:
                 expression.syntax = pps2.VariationDescriptor.Expression.HGVS
             except AttributeError:
                 pass
-            # Normalize HGVS: tests expect no optional 'chr' prefix
-            hgvs_val = (genotype_record.hgvsg or "").strip()
-            if hgvs_val.lower().startswith("chr"):
-                hgvs_val = hgvs_val[3:]
-            expression.value = hgvs_val
+            # expression.value = genotype_record.hgvsg or ""
+            # Canonicalize: serialize without optional 'chr' prefix so it matches
+            # expected '16:g.100A>G' style while still accepting either form as input.
+            hgvs = (genotype_record.hgvsg or "").strip()
+            if hgvs.lower().startswith("chr"):
+                hgvs = hgvs[3:]
+            expression.value = hgvs
 
             # Optional: attempt to set a subset of location/alleles if supported
             try:
@@ -852,27 +886,39 @@ class DefaultMapper(TableMapper):
                 variation_descriptor.reference = genotype_record.reference
                 variation_descriptor.alternate = genotype_record.alternate
             except AttributeError:
-                # Some library builds do not expose these submessages; try to skip gracefully if we cannot implement this feature.
+                # Some library builds do not expose these submessages; skip gracefully.
                 pass
 
-        # Optional sections (diseases, measurements, biosamples).
-        # Keep assignments minimal and consistent with the earlier CLI code.
-        for disease_record in bundle.get("disease_records", []):
-            disease_message = phenopacket.diseases.add()
+    @staticmethod
+    def _add_diseases_to_packet(pkt, diseases: list) -> None:
+        """
+        Add Disease messages.
+        Only set term.id and (if present) term.label. Onset/status wiring can be
+        added later as needed.
+        """
+        for disease_record in diseases:
+            disease_message = pkt.diseases.add()
             disease_message.term.id = disease_record.disease_term
             if getattr(disease_record, "disease_label", None):
                 disease_message.term.label = disease_record.disease_label
-            # Onset/status message wiring can be expanded later as needed.
 
-        for measurement_record in bundle.get("measurement_records", []):
-            measurement_message = phenopacket.measurements.add()
+    @staticmethod
+    def _add_measurements_to_packet(pkt, measurements: list) -> None:
+        """
+        Add Measurement messages.
+        Keep assignments minimal due to differences across proto builds.
+        """
+        for measurement_record in measurements:
+            measurement_message = pkt.measurements.add()
             measurement_message.type.id = measurement_record.measurement_type
-            # Depending on the installed protobuf version, value/unit/timestamp may require message types;
-            # keep this minimal for now (extend down the line).
+            # Value/unit/timestamp fields vary by build; intentionally minimal.
 
-        for biosample_record in bundle.get("biosample_records", []):
-            biosample_message = phenopacket.biosamples.add()
+    @staticmethod
+    def _add_biosamples_to_packet(pkt, biosamples: list) -> None:
+        """
+        Add Biosample messages with id and type.id.
+        """
+        for biosample_record in biosamples:
+            biosample_message = pkt.biosamples.add()
             biosample_message.id = biosample_record.biosample_id
             biosample_message.type.id = biosample_record.biosample_type
-
-        return phenopacket

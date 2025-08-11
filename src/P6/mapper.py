@@ -274,8 +274,12 @@ class DefaultMapper(TableMapper):
             )
 
             # Normalize chromosome: allow "16" but store "chr16"
-            # chrom_raw = str(row["chromosome"]).strip()
+            chrom_raw = str(row.get("chromosome", "")).strip()
+            if not chrom_raw:
+                notepad.add_error(f"Sheet {sheet_name!r}: Missing chromosome")
+                return [], []
             chrom = chrom_raw if chrom_raw.lower().startswith("chr") else f"chr{chrom_raw}"
+
             try:
                 genotypes.append(
                     Genotype(

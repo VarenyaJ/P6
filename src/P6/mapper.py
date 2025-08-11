@@ -278,7 +278,9 @@ class DefaultMapper(TableMapper):
             if not chrom_raw:
                 notepad.add_error(f"Sheet {sheet_name!r}: Missing chromosome")
                 return [], []
-            chrom = chrom_raw if chrom_raw.lower().startswith("chr") else f"chr{chrom_raw}"
+            chrom = (
+                chrom_raw if chrom_raw.lower().startswith("chr") else f"chr{chrom_raw}"
+            )
 
             try:
                 genotypes.append(
@@ -286,7 +288,7 @@ class DefaultMapper(TableMapper):
                         genotype_patient_ID=str(row["genotype_patient_ID"]),
                         contact_email=contact_email,
                         phasing=DefaultMapper._to_bool(row.get("phasing")),
-                        #chromosome=str(row["chromosome"]),
+                        # chromosome=str(row["chromosome"]),
                         chromosome=chrom,
                         start_position=int(row["start_position"]),
                         end_position=int(row["end_position"]),

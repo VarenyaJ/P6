@@ -16,14 +16,18 @@ from collections import defaultdict
 from dataclasses import dataclass
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
 from stairval.notepad import Notepad
-from typing import Sequence, Dict, List
+from typing import Sequence, Dict, List, TypeVar, Tuple
+
+T = TypeVar("T")
+RowParseResult = Tuple[List[T], List[hpotk.TermId]]
+# gives us one consistent return shape: (parsed_items, aux_ids_for_batch_validation)
+
 
 from .biosample import BiosampleRecord
 from .disease import DiseaseRecord
 from .genotype import Genotype
 from .measurement import MeasurementRecord
 from .phenotype import Phenotype
-
 
 # For any renamed field, the two neighbors it must sit between
 EXPECTED_COLUMN_NEIGHBORS = {
@@ -58,7 +62,6 @@ DISEASE_KEY_COLUMNS = {"disease_term", "disease_onset"}
 MEASUREMENT_KEY_COLUMNS = {"measurement_type", "measurement_value", "measurement_unit"}
 BIOSAMPLE_KEY_COLUMNS = {"biosample_id", "biosample_type", "collection_date"}
 
-
 # Map raw zygosity abbreviations to allowed dataclass zygosity values
 ZYGOSITY_MAP = {
     "het": "heterozygous",
@@ -88,7 +91,12 @@ HGVS_VARIANT_COLUMNS = {"hgvsg", "hgvsc", "hgvsp"}
 GENOTYPE_BASE_COLUMNS = {"contact_email", "phasing"}
 
 # Friendly aliases → reduces friction while keeping behavior explicit
-KNOWN_SHEET_ALIASES: dict[str, set[str]] = {"genotype": {"genotype", "variants", "variant", "geno"}, "phenotype": {"phenotype", "hpo", "pheno"}, "diseases": {"disease", "diseases"}, "measurements": {"measurement", "measurements", "labs"}, "biosamples": {"biosample", "biosamples", "samples"}}
+KNOWN_SHEET_ALIASES: dict[str, set[str]] = {"genotype": {"genotype", "variants", "variant", "geno"},
+                                            "phenotype": {"phenotype", "hpo", "pheno"},
+                                            "diseases": {"disease", "diseases"},
+                                            "measurements": {"measurement", "measurements", "labs"},
+                                            "biosamples": {"biosample", "biosamples", "samples"}}
+
 
 @dataclass
 class TypedTables:
@@ -102,13 +110,15 @@ class TypedTables:
     measurements: pd.DataFrame | None
     biosamples: pd.DataFrame | None
 
+
 class TableMapper(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def apply_mapping(
-        self, tables: dict[str, pd.DataFrame], notepad: Notepad
+            self, tables: dict[str, pd.DataFrame], notepad: Notepad
     ) -> typing.Sequence[Phenopacket]:
         # return fully-assembled Phenopacket messages, not intermediate parts.
         raise NotImplementedError
+
 
 class DefaultMapper(TableMapper):
     def __init__(self, hpo: hpotk.MinimalOntology, strict_variants: bool = False):
@@ -120,7 +130,7 @@ class DefaultMapper(TableMapper):
         self.strict_variants = strict_variants
 
     def apply_mapping(
-        self, tables: dict[str, pd.DataFrame], notepad: Notepad
+            self, tables: dict[str, pd.DataFrame], notepad: Notepad
     ) -> list[Phenopacket]:
         """
         Process:
@@ -162,142 +172,186 @@ class DefaultMapper(TableMapper):
         original = working.columns[0]
         return working.rename(columns={original: column_id})
 
-    def _map_genotype(
-        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
-    ) -> list[Genotype]:
-        records: list[Genotype] = []
-        for idx, row in df.iterrows():
-            # handle slash‑separated zygosity and inheritance
-            list_of_zygosity_types = [
-                z.strip().lower() for z in str(row["zygosity"]).split("/")
-            ]
-            list_of_inheritance_types = [
-                i.strip().lower() for i in str(row["inheritance"]).split("/")
-            ]
-            for zygosity_type, inheritance_type in zip(
-                list_of_zygosity_types, list_of_inheritance_types
-            ):
-                if zygosity_type not in ZYGOSITY_MAP:
-                    notepad.add_error(
-                        f"Sheet {sheet_name!r}: Unrecognized zygosity code {zygosity_type!r}"
+    @staticmethod
+    def _normalize_time_like(value: typing.Any) -> str:
+        """
+        Phenotype/measurement/biosample timestamps:
+        - numeric values are prefixed with 'T' (e.g., 20200101 -> 'T20200101')
+        - strings are trimmed; if not already prefixed with 'T', we add it
+        - empty/NaN -> empty string
+        """
+        # Handle None, NaN, NaT, pandas NA, and empty/whitespace-only strings
+        if value is None or pd.isna(value) or (isinstance(value, str) and not value.strip()):
+            return ""
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return f"T{int(value)}"
+        s = str(value).strip()
+        if not s:
+            return ""
+        return s if s.upper().startswith("T") else f"T{s}"
+
+    @staticmethod
+    def _to_bool(value: typing.Any) -> bool:
+        """
+        Robust boolean parsing:
+        - True for: 1, '1', 'true', 't', 'yes', 'y' (case-insensitive)
+        - False for: 0, '0', 'false', 'f', 'no', 'n', '', None
+        - Fallback: Python truthiness on other values (rare)
+        """
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        s = str(value).strip().lower()
+        if s in {"1", "true", "t", "yes", "y"}:
+            return True
+        if s in {"0", "false", "f", "no", "n", ""}:
+            return False
+        return bool(value)
+
+    @staticmethod
+    def parse_genotype_row(row: pd.Series, sheet_name: str, notepad: Notepad) -> RowParseResult[Genotype]:
+        """
+        Parse a single genotype row into zero or more Genotype dataclass instances.
+        Returns ([], []) if validation fails for this row.
+        """
+        genotypes: list[Genotype] = []
+
+        # handle slash-separated zygosity and inheritance
+        list_of_zygosity_types = [zygosity_entry.strip().lower() for zygosity_entry in
+                                  str(row.get("zygosity", "")).split("/")]
+        list_of_inheritance_types = [inheritance_entry.strip().lower() for inheritance_entry in
+                                     str(row.get("inheritance", "")).split("/")]
+
+        # zip will truncate to the shorter of the two, matching the previous behavior
+        for zygosity_type, inheritance_type in zip(list_of_zygosity_types, list_of_inheritance_types):
+            if zygosity_type not in ZYGOSITY_MAP:
+                notepad.add_error(f"Sheet {sheet_name!r}: Unrecognized zygosity code {zygosity_type!r}")
+                return [], []  # bail on this row
+            if inheritance_type not in INHERITANCE_MAP:
+                notepad.add_error(f"Sheet {sheet_name!r}: Unrecognized inheritance code {inheritance_type!r}")
+                return [], []  # bail on this row
+
+            # allow missing/NaN contact_email → substitute dummy
+            raw_email = row.get("contact_email")
+            contact_email = ("unknown@example.com" if pd.isna(raw_email) else str(raw_email).strip())
+
+            try:
+                genotypes.append(
+                    Genotype(
+                        genotype_patient_ID=str(row["genotype_patient_ID"]),
+                        contact_email=contact_email,
+                        phasing=DefaultMapper._to_bool(row.get("phasing")),
+                        chromosome=str(row["chromosome"]),
+                        start_position=int(row["start_position"]),
+                        end_position=int(row["end_position"]),
+                        reference=str(row["reference"]),
+                        alternate=str(row["alternate"]),
+                        gene_symbol=str(row["gene_symbol"]),
+                        hgvsg=str(row["hgvsg"]),
+                        hgvsc=str(row["hgvsc"]),
+                        hgvsp=str(row["hgvsp"]),
+                        zygosity=ZYGOSITY_MAP[zygosity_type],
+                        inheritance=INHERITANCE_MAP[inheritance_type]
                     )
-                if inheritance_type not in INHERITANCE_MAP:
-                    notepad.add_error(
-                        f"Sheet {sheet_name!r}: Unrecognized inheritance code {inheritance_type!r}"
-                    )
-                # allow missing/NaN contact_email → substitute dummy
-                raw_email = row["contact_email"]
-                contact_email = (
-                    "unknown@example.com"
-                    if pd.isna(raw_email)
-                    else str(raw_email).strip()
                 )
-                kwargs = {
-                    "genotype_patient_ID": str(row["genotype_patient_ID"]),
-                    "contact_email": contact_email,
-                    "phasing": bool(row["phasing"]),
-                    "chromosome": str(row["chromosome"]),
-                    "start_position": int(row["start_position"]),
-                    "end_position": int(row["end_position"]),
-                    "reference": str(row["reference"]),
-                    "alternate": str(row["alternate"]),
-                    "gene_symbol": str(row["gene_symbol"]),
-                    "hgvsg": str(row["hgvsg"]),
-                    "hgvsc": str(row["hgvsc"]),
-                    "hgvsp": str(row["hgvsp"]),
-                    "zygosity": ZYGOSITY_MAP[zygosity_type],
-                    "inheritance": INHERITANCE_MAP[inheritance_type],
-                }
-                try:
-                    records.append(Genotype(**kwargs))
-                except (ValueError, TypeError) as e:
-                    notepad.add_error(f"Sheet {sheet_name!r}, row {idx}: {e}")
+            except (ValueError, TypeError) as e:
+                notepad.add_error(f"Sheet {sheet_name!r}: {e}")
+                return [], []  # treat any construction error as fatal for this row
+
+        return genotypes, []  # no batch IDs for genotypes (yet)
+
+    @staticmethod
+    def parse_phenotype_row(row: pd.Series, hpo: hpotk.MinimalOntology, sheet_name: str, notepad: Notepad) -> RowParseResult[Phenotype]:
+        """
+        Parse a single phenotype row into zero or more Phenotype dataclasses.
+        Also return any parsed TermIds so the caller can run batch validators later.
+        Returns ([], []) if critical validation fails.
+        """
+        phenotypes: list[Phenotype] = []
+        term_ids: list[hpotk.TermId] = []
+
+        # normalize phenotype fields into valid strings
+        hpo_cell = str(row.get("hpo_id", "")).strip()
+
+        # Parse optional label and digits; extract the last token (it should just be the HPO code), case-insensitive
+        m = re.match(
+            r"""
+            ^\s*
+            (?P<label>.*?)              # optional label
+            \s*                         # whitespace
+            \(?                         # optional "("
+            (?:HP:?)?(?P<digits>\d+)    # digits, with optional "HP"
+            \)?                         # optional ")"
+            \s*$
+            """,
+            hpo_cell,
+            re.VERBOSE | re.IGNORECASE,
+        )
+        if not m:
+            notepad.add_error(f"Sheet {sheet_name!r}: Cannot parse HPO term+ID from {hpo_cell!r}")
+            return [], []
+
+        raw_label = m.group("label").strip()
+        digits = m.group("digits")
+        curie = f"HP:{digits.zfill(7)}"
+        term_id = hpotk.TermId.from_curie(curie)
+
+        # 1) Normalize the date_of_observation
+        # if it's numeric, cast to int; else treat as string
+        date_str = DefaultMapper._normalize_time_like(row.get("date_of_observation"))
+
+        # 2) Append the Phenotype record
+        try:
+            phenotype = Phenotype(
+                phenotype_patient_ID=str(row["phenotype_patient_ID"]),
+                HPO_ID=curie,
+                date_of_observation=date_str,
+                status=DefaultMapper._to_bool(row.get("status")),
+            )
+        except (ValueError, TypeError) as e:
+            notepad.add_error(f"Sheet {sheet_name!r}: {e}")
+            return [], []
+
+        phenotypes.append(phenotype)
+        term_ids.append(term_id)
+
+        # 3) The IDs must exist in the ontology:
+        term = hpo.get_term(term_id)
+        if term is None:
+            notepad.add_warning(f"Sheet {sheet_name!r}: HPO ID {curie!r} not found in ontology")
+        else:
+            # 4) If the term is obsolete, flag it:
+            if term.is_obsolete:
+                replacements = ", ".join(str(t) for t in term.alt_term_ids)
+                notepad.add_warning(f"Sheet {sheet_name!r}: {curie!r} is obsolete; use {replacements}")
+            # 5) If they gave a label, check that it matches (case-insensitive):
+            if raw_label and raw_label.lower() != term.name.lower():
+                notepad.add_warning(
+                    f"Sheet {sheet_name!r}: label {raw_label!r} does not match ontology name {term.name!r}")
+
+        return phenotypes, term_ids
+
+    def _map_genotype(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[Genotype]:
+        records: list[Genotype] = []
+        for _, row in df.iterrows():
+            # Parse this row into zero or more Genotype records
+            row_records, _ = self.parse_genotype_row(row, sheet_name, notepad)
+            records.extend(row_records)
         return records
 
-    def _map_phenotype(
-        self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
-    ) -> list[Phenotype]:
+    def _map_phenotype(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[Phenotype]:
         records: list[Phenotype] = []
         # Collect every HPO ID in this sheet, so we can validate propagation later:
         all_ids: list[hpotk.TermId] = []
 
-        for idx, row in df.iterrows():
-            # normalize phenotype fields into valid strings
-            hpo_cell = str(row["hpo_id"]).strip()
-            # Parse optional label and digits
-            # extract the last token (it should just be the HPO code), case‑insensitive
-            m = re.match(
-                r"""
-                ^\s*
-                (?P<label>.*?)              # optional label
-                \s*                         # whitespace
-                \(?                         # optional "("
-                (?:HP:?)?(?P<digits>\d+)    # digits, with optional "HP"
-                \)?                         # optional ")"
-                \s*$
-                """,
-                hpo_cell,
-                re.VERBOSE | re.IGNORECASE,
-            )
-            if not m:
-                notepad.add_error(
-                    f"Sheet {sheet_name!r}, row {idx}: Cannot parse HPO term+ID from {hpo_cell!r}"
-                )
-                continue
+        for _, row in df.iterrows():
+            row_records, row_term_ids = self.parse_phenotype_row(row, self._hpo, sheet_name, notepad)
+            # Each parser returns lists; extend the accumulators.
+            records.extend(row_records)
+            all_ids.extend(row_term_ids)
 
-            raw_label = m.group("label").strip()
-            digits = m.group("digits")
-            curie = f"HP:{digits.zfill(7)}"
-            term_id = hpotk.TermId.from_curie(curie)
-
-            # 1) Normalize the date_of_observation
-            # Normalize the date_of_observation
-            # if it's numeric, cast to int; else treat as string
-            raw_date = row["date_of_observation"]
-            if isinstance(raw_date, (int, float)):
-                date_str = f"T{int(raw_date)}"
-            else:
-                s = str(raw_date).strip()
-                date_str = s if s.upper().startswith("T") else f"T{s}"
-
-            # 2) Append the Phenotype record
-            # Append Phenotype record
-            records.append(
-                Phenotype(
-                    phenotype_patient_ID=str(row["phenotype_patient_ID"]),
-                    HPO_ID=curie,
-                    date_of_observation=date_str,
-                    status=bool(row["status"]),
-                )
-            )
-
-            # 3) The IDs must exist in the ontology:
-            # Validate ID against ontology
-            term = self._hpo.get_term(term_id)
-            if term is None:
-                notepad.add_warning(
-                    f"Skipping row {idx} in {sheet_name!r}: HPO ID {curie!r} not found in ontology"
-                )
-                continue
-
-            # 4) If the term is obsolete, flag it:
-            if term.is_obsolete:
-                replacements = ", ".join(str(t) for t in term.alt_term_ids)
-                notepad.add_warning(
-                    f"Sheet {sheet_name!r}, row {idx}: {curie!r} is obsolete; use {replacements}"
-                )
-
-            # 5) If they gave a label, check that it matches (case-insensitive):
-            if raw_label and raw_label.lower() != term.name.lower():
-                notepad.add_warning(
-                    f"Sheet {sheet_name!r}, row {idx}: label {raw_label!r} "
-                    f"does not match ontology name {term.name!r}"
-                )
-
-            # Only now record for batch‐validation
-            all_ids.append(term_id)
-
-        # Bulk‐validate all collected IDs
+        # Bulk-validate all collected IDs
         if all_ids:
             validators = [
                 ObsoleteTermIdsValidator(self._hpo),
@@ -315,7 +369,11 @@ class DefaultMapper(TableMapper):
 
         return records
 
+    @staticmethod
     def check_hgvs_consistency(item: pd.Series, sheet_name: str, notepad: Notepad, strict: bool) -> None:
+        """
+        If both raw coordinates and HGVS notation are present, ensure that the genotype notations match
+        """
         pattern = re.compile(
             r"^(?:chr)?(?P<chromosome_name>[^:]+):g\.(?P<mutation_position>\d+)"
             r"(?P<reference_allele>[ACGT]+)>(?P<alternative_allele>[ACGT]+)$",
@@ -327,12 +385,26 @@ class DefaultMapper(TableMapper):
             notepad.add_error(f"Sheet {sheet_name!r}: malformed HGVS g. notation {hgvs!r}")
             return
 
+        # mismatch = (str(item["chromosome"]) != m.group("chromosome_name") or int(item["start_position"]) != int(m.group("mutation_position")) or int(item["end_position"]) != int(m.group("mutation_position")) or str(item["reference"]) != m.group("reference_allele") or str(item["alternate"]) != m.group("alternative_allele")
+
+        # Normalize cases and optional 'chr' prefix for robust comparison
+        chrom_cell = str(item["chromosome"]).strip().lower()
+        if chrom_cell.startswith("chr"):
+            chrom_cell = chrom_cell[3:]
+        chrom_hgvs = m.group("chromosome_name").strip().lower()
+
+        pos_hgvs = int(m.group("mutation_position"))
+        ref_cell = str(item["reference"]).strip().upper()
+        alt_cell = str(item["alternate"]).strip().upper()
+        ref_hgvs = m.group("reference_allele").upper()
+        alt_hgvs = m.group("alternative_allele").upper()
+
         mismatch = (
-                str(item["chromosome"]) != m.group("chromosome_name") or
-                int(item["start_position"]) != int(m.group("mutation_position")) or
-                int(item["end_position"]) != int(m.group("mutation_position")) or
-                str(item["reference"]) != m.group("reference_allele") or
-                str(item["alternate"]) != m.group("alternative_allele")
+            chrom_cell != chrom_hgvs
+            or int(item["start_position"]) != pos_hgvs
+            or int(item["end_position"]) != pos_hgvs
+            or ref_cell != ref_hgvs
+            or alt_cell != alt_hgvs
         )
         if mismatch:
             msg = (f"Sheet {sheet_name!r}: HGVS '{hgvs}' disagrees with "
@@ -380,16 +452,38 @@ class DefaultMapper(TableMapper):
         """
         Sheet-level wrapper for Genotype rows:
           - normalize index to 'genotype_patient_ID'
-          - optionally check HGVS vs raw coordinate consistency when both are present
+          - require all key genotype columns (raw + HGVS)
+          - optionally check HGVS vs raw coordinate consistency
           - delegate row conversion to _map_genotype
         """
         if df is None:
             return []
         working = self._prepare_sheet(df, is_genotype=True)
-        columns_present = set(working.columns)
-        if RAW_VARIANT_COLUMNS.issubset(columns_present) and (HGVS_VARIANT_COLUMNS & columns_present):
-            for _, row in working.iterrows():
-                check_hgvs_consistency(row, "genotype", notepad, self.strict_variants)
+
+        have = set(working.columns)
+        # Row parser and Genotype dataclass expect these columns to exist:
+        missing = sorted(GENOTYPE_KEY_COLUMNS - have)
+        if missing:
+            notepad.add_error(f"Sheet 'genotype': missing required columns: {missing}")
+            return []
+        # Cross-check HGVS vs raw coordinates for every row (since both are present)
+        for _, row in working.iterrows():
+            self.check_hgvs_consistency(row, "genotype", notepad, self.strict_variants)
+
+        # Must have the base columns, plus EITHER raw coordinates OR at least one HGVS field.
+        #if not GENOTYPE_BASE_COLUMNS.issubset(have):
+            #missing = sorted(GENOTYPE_BASE_COLUMNS - have)
+            #notepad.add_error(f"Sheet 'genotype': missing required base columns: {missing}")
+            #return []
+        #if not (RAW_VARIANT_COLUMNS.issubset(have) or (HGVS_VARIANT_COLUMNS & have)):
+            #notepad.add_error("Sheet 'genotype': provide either all raw coordinates ", f"{sorted(RAW_VARIANT_COLUMNS)} or at least one HGVS column ", f"from {sorted(HGVS_VARIANT_COLUMNS)}")
+            #return []
+        ## If BOTH groups are present, cross-check consistency:
+        #columns_present = have
+        #if RAW_VARIANT_COLUMNS.issubset(columns_present) and (HGVS_VARIANT_COLUMNS & columns_present):
+            #for _, row in working.iterrows():
+                #self.check_hgvs_consistency(row, "genotype", notepad, self.strict_variants)
+
         return self._map_genotype("genotype", working, notepad)
 
     def _map_phenotype_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[Phenotype]:
@@ -401,6 +495,11 @@ class DefaultMapper(TableMapper):
         if df is None:
             return []
         working = self._prepare_sheet(df, is_genotype=False)
+        missing = PHENOTYPE_KEY_COLUMNS - set(working.columns)
+        if missing:
+            notepad.add_error(f"Sheet 'phenotype': missing expected columns: {sorted(missing)}")
+            return []
+
         return self._map_phenotype("phenotype", working, notepad)
 
     def _map_diseases_table(self, df: pd.DataFrame | None, notepad: Notepad) -> list[DiseaseRecord]:
@@ -436,9 +535,7 @@ class DefaultMapper(TableMapper):
         working = self._prepare_sheet_for_patient(df, "patient_ID")
         return self._map_biosample("biosamples", working, notepad)
 
-    def _map_disease(
-            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
-    ) -> list[DiseaseRecord]:
+    def _map_disease(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[DiseaseRecord]:
         """
         Map each row in a disease sheet to a DiseaseRecord.
         Required columns: patient_ID, disease_term, disease_onset, disease_status.
@@ -458,16 +555,14 @@ class DefaultMapper(TableMapper):
                     disease_term=str(row["disease_term"]).strip(),
                     disease_label=(str(row.get("disease_label", "")).strip() or None),
                     disease_onset=str(row["disease_onset"]).strip(),
-                    disease_status=bool(row["disease_status"]),
+                    disease_status=DefaultMapper._to_bool(row.get("disease_status")),
                 )
                 records.append(disease_record)
             except (ValueError, TypeError) as exception:
                 notepad.add_error(f"Sheet {sheet_name!r}, row {index}: {exception}")
         return records
 
-    def _map_measurement(
-            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
-    ) -> list[MeasurementRecord]:
+    def _map_measurement(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[MeasurementRecord]:
         """
         Map each row in a measurement sheet to a MeasurementRecord.
         Required columns: patient_ID, measurement_type, measurement_value, measurement_unit.
@@ -482,11 +577,7 @@ class DefaultMapper(TableMapper):
 
         for index, row in df.iterrows():
             try:
-                raw_timestamp = row.get("measurement_timestamp", "")
-                if isinstance(raw_timestamp, (int, float)) and not str(raw_timestamp).startswith("T"):
-                    measurement_timestamp = f"T{int(raw_timestamp)}"
-                else:
-                    measurement_timestamp = str(raw_timestamp).strip() if pd.notna(raw_timestamp) else None
+                measurement_timestamp = self._normalize_time_like(row.get("measurement_timestamp")) or None
 
                 measurement_record = MeasurementRecord(
                     patient_ID=str(row["patient_ID"]),
@@ -500,9 +591,7 @@ class DefaultMapper(TableMapper):
                 notepad.add_error(f"Sheet {sheet_name!r}, row {index}: {exception}")
         return records
 
-    def _map_biosample(
-            self, sheet_name: str, df: pd.DataFrame, notepad: Notepad
-    ) -> list[BiosampleRecord]:
+    def _map_biosample(self, sheet_name: str, df: pd.DataFrame, notepad: Notepad) -> list[BiosampleRecord]:
         """
         Map each row in a biosample sheet to a BiosampleRecord.
         Required columns: patient_ID, biosample_id, biosample_type, collection_date.
@@ -517,11 +606,7 @@ class DefaultMapper(TableMapper):
 
         for index, row in df.iterrows():
             try:
-                raw_collection_date = row["collection_date"]
-                if isinstance(raw_collection_date, (int, float)) and not str(raw_collection_date).startswith("T"):
-                    collection_date = f"T{int(raw_collection_date)}"
-                else:
-                    collection_date = str(raw_collection_date).strip()
+                collection_date = self._normalize_time_like(row.get("collection_date")) or ""
 
                 biosample_record = BiosampleRecord(
                     patient_ID=str(row["patient_ID"]),
@@ -560,7 +645,8 @@ class DefaultMapper(TableMapper):
             grouped[biosample.patient_ID]["biosample_records"].append(biosample)
         return grouped
 
-    def construct_phenopacket_for_patient(self, patient_id: str, bundle: dict[str, list], notepad: Notepad) -> Phenopacket:
+    def construct_phenopacket_for_patient(self, patient_id: str, bundle: dict[str, list],
+                                          notepad: Notepad) -> Phenopacket:
         """
         Build a Phenopacket for a single patient using their grouped records.
         Field assignments follow the explicit naming and serialization style.
@@ -638,4 +724,3 @@ class DefaultMapper(TableMapper):
             biosample_message.type.id = biosample_record.biosample_type
 
         return phenopacket
-

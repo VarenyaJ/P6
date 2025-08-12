@@ -544,3 +544,78 @@ def build_text_variants(user_term: str, normalized: str) -> List[str]:
             uniq.append(t)
             seen.add(t)
     return uniq
+
+
+# ----------------------------
+# FHIR: search and enrichment
+# ----------------------------
+
+def _fallback_variant(text_filter: str) -> Optional[str]:
+    """
+    Loosen a variant string if the first $expand returns nothing.
+
+    The fallback removes bracketed tokens and punctuation (except slashes),
+    collapses whitespace, and returns None if no meaningful change occurred.
+    """
+    v2 = re.sub(r"\[[^\]]+\]", "", text_filter)
+    v2 = re.sub(r"[(),.:;]", " ", v2)
+    v2 = re.sub(r"\s+", " ", v2).strip()
+    if len(v2) >= 3 and v2 != text_filter:
+        return v2
+    return None
+
+
+def expand_valueset_candidates(session: requests.Session, text_filter: str, count: int) -> List[Dict[str, Any]]:
+    """
+    Call ValueSet/$expand and return the raw 'contains' entries.
+
+    Implements a lightweight fallback if the first call returns nothing.
+    """
+    params = {"url": VALUESET_ALL_LOINC, "filter": text_filter, "count": count, "_format": "json"}
+    data = http_get_json(session, f"{FHIR_BASE}/ValueSet/$expand", params)
+    contains = (data.get("expansion", {}) or {}).get("contains", []) or []
+    if not contains:
+        fb = _fallback_variant(text_filter)
+        if fb:
+            params["filter"] = fb
+            data = http_get_json(session, f"{FHIR_BASE}/ValueSet/$expand", params)
+            contains = (data.get("expansion", {}) or {}).get("contains", []) or []
+    return contains
+
+
+def lookup_loinc_details(session: requests.Session, code: str) -> Dict[str, Any]:
+    """
+    Flatten CodeSystem/$lookup (Parameters) to a dict with properties.
+
+    Returns
+    -------
+    dict
+        Keys include: "code", "display", "definition", "status", "properties".
+    """
+    params = {"system": "http://loinc.org", "code": code, "_format": "json"}
+    data = http_get_json(session, f"{FHIR_BASE}/CodeSystem/$lookup", params)
+    out: Dict[str, Any] = {"code": code}
+    for p in data.get("parameter", []):
+        name = p.get("name")
+        val = p.get("valueString") or p.get("valueCode") or p.get("valueUri")
+        if name in ("name", "display"):
+            out["display"] = val
+        elif name == "version":
+            out["version"] = val
+        elif name == "status":
+            out["status"] = val
+        elif name == "abstract":
+            out["abstract"] = val
+        elif name == "definition":
+            out["definition"] = val
+        elif name == "property":
+            prop_code = None
+            prop_value = None
+            for sub in p.get("part", []):
+                if sub.get("name") == "code":
+                    prop_code = sub.get("valueCode")
+                elif sub.get("name") in ("valueString", "valueCode", "valueUri"):
+                    prop_value = sub.get("valueString") or sub.get("valueCode") or sub.get("valueUri")
+            if prop_code and prop_value:
+                out.setdefault("properties", {})[prop_code] = prop_value
+    return out

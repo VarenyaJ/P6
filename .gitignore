@@ -222,3 +222,4 @@ tests/.DS_Store
 tests/data/.DS_Store
 /tests/data/hp.json
 /src/P6/hp.json
+loinc_creds.txt

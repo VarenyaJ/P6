@@ -1,4 +1,78 @@
 #!/usr/bin/env python3
+"""
+loinc_lookup.py
+================
+
+Purpose
+-------
+Map user-facing ultrasound/OB/GYN terms (e.g., "BPD (cm)", "FHR (bpm)") to
+**LOINC observation codes** using the official LOINC FHIR Terminology Service.
+
+This version focuses on:
+  • Getting *plain, reportable measurements* (not Parts or AnswerLists)
+  • Avoiding deprecated / methodized / derived entries unless you *explicitly* ask
+  • Enforcing numeric expectations (PROPERTY + SCALE) when the term implies units
+  • Returning *broader* results and *clear flags* so reviewers don't miss issues
+  • **Improved recall** for ratio/qualitative terms via curated variants & fallbacks
+  • **Deterministic ranking** with secondary ties broken by numeric/Qn preference
+
+For Clinicians
+--------------
+- Results are labeled and flagged clearly:
+    is_part, is_answer_list, is_deprecated, is_derived, is_percentile,
+    has_laterality, property_match, scale_match, stage (strict|relaxed), score.
+- Numeric terms (cm/mm/g/bpm; “length/diameter/circumference/weight/rate”)
+  prefer **SCALE_TYP=Qn** and the expected **PROPERTY** (e.g., Circ, Diam, Len, Mass, Rate).
+- Fallback (RELAXED) still excludes Parts/AnswerLists/deprecated but allows
+  methodized/derived/percentile if nothing else is available—**and flags them.**
+
+For Bioinformaticians
+---------------------
+- Candidates come from `ValueSet/$expand` on the implicit LOINC ValueSet
+  `http://loinc.org/vs` using multiple **LOINC-style phrase variants**.
+- Details from `CodeSystem/$lookup` populate properties like PROPERTY, SCALE_TYP,
+  SYSTEM, METHOD_TYP, and more. We score + filter using these properties.
+- We provide an **optional all-candidates CSV** (`--save-all-candidates`)
+  containing every enriched candidate with scores and gating flags for audit.
+
+For Computer Scientists
+-----------------------
+- Clear separation of concerns (auth, HTTP, candidates, enrichment, gating, ranking).
+- Idempotent GET with exponential backoff on 429/5xx; fast-fail on 401 with hints.
+- Deterministic ranking with explicit feature-based scoring and **stable tie-breaks**.
+- CSV outputs are schema-stable; columns are documented in code.
+
+Authentication (priority order)
+-------------------------------
+1) `--creds /path/to/file` (two lines: username, password)   [recommended]
+2) Environment variables: `LOINC_USER` and `LOINC_PASS`
+3) Local file `./loinc_creds.txt` (two lines: username, password)
+
+Outputs
+-------
+1) Console preview: best pick per term (+ a warning banner if it’s derived/percentile/etc.)
+2) CSV (default `loinc_lookup_results.csv`): the **top-k** per term with rich flags
+3) OPTIONAL CSV of **all enriched candidates** per term: `--save-all-candidates`
+   (default path `loinc_lookup_all_candidates.csv` unless overridden)
+
+Usage Examples
+--------------
+# Use defaults and save top-5 per term
+python loinc_lookup.py --creds loinc_creds.txt --top-k 5
+
+# Keep top-10, pull up to 100 candidates per text-variant; also save ALL candidates
+python loinc_lookup.py --creds loinc_creds.txt --top-k 10 --count 100 --save-all-candidates
+
+# Custom terms; still leverage the gating/scoring
+python loinc_lookup.py --creds loinc_creds.txt "BPD (cm)" "HC (cm)" "FHR (bpm)" "EFW (g)"
+
+Notes
+-----
+- We *do not* hard-limit to prenatal/fetal, but we **softly prefer** fetal/US context.
+- If the “best” match is methodized/derived/percentile or not Qn for numeric terms,
+  the console prints a **WARNING** and the CSV flags it. This way nobody misses it.
+"""
+
 from __future__ import annotations
 
 import os
@@ -18,6 +92,10 @@ except ImportError:
     pd = None
 
 
+# ----------------------------
+# FHIR server configuration
+# ----------------------------
+
 FHIR_BASE = "https://fhir.loinc.org"
 # LOINC's implicit ValueSet for all codes (NOT the older /vs/loinc)
 VALUESET_ALL_LOINC = "http://loinc.org/vs"
@@ -26,6 +104,11 @@ DEFAULT_SLEEP_SEC = 0.2            # politeness throttle between $lookup calls
 # >>> Recall & breadth controls (raised caps; still bounded for runtime sanity)
 DEFAULT_MAX_VARIANT_RESULTS = 200  # per-variant trim cap after lightweight scoring (was 20)
 GLOBAL_CANDIDATE_CAP = 1200        # guardrail across variants (was 400)
+
+
+# ----------------------------
+# Synonyms and expectations
+# ----------------------------
 
 # Basic clinical abbreviations → plain words for search expansion
 ABBREV_TO_WORDS = {"BPD": "biparietal diameter", "HC": "head circumference", "AC": "abdominal circumference", "FL": "femur length", "EFW": "estimated fetal weight", "FHR": "fetal heart rate"}
@@ -124,6 +207,10 @@ def expected_properties_for_intent(user_term: str, normalized: str) -> Optional[
     # Gestational age: not gating on PROPERTY
     return None
 
+
+# ----------------------------
+# Credentials & HTTP
+# ----------------------------
 
 def _tidy(s: str) -> str:
     return (s or "").strip().strip("\r").strip("\n")
@@ -229,6 +316,10 @@ def assert_auth_ok(session: requests.Session) -> None:
                       params={"url": "http://loinc.org", "_format": "json"})
 
 
+# ----------------------------
+# Query normalization
+# ----------------------------
+
 def strip_units(user_term: str) -> str:
     """Remove trailing '(unit)' to get a clean base expression."""
     t = user_term.strip()
@@ -276,7 +367,9 @@ def is_ratio_intent(user_term: str, normalized: str) -> bool:
     return (" ratio " in f"{user_term} {normalized}".lower()) or ("/" in strip_units(user_term))
 
 
-
+# ----------------------------
+# Phrase variants (critical for bringing in the "right" LOINC candidates)
+# ----------------------------
 
 def build_text_variants(user_term: str, normalized: str) -> List[str]:
     """
@@ -451,4 +544,3 @@ def build_text_variants(user_term: str, normalized: str) -> List[str]:
             uniq.append(t)
             seen.add(t)
     return uniq
-

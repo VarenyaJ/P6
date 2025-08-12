@@ -1365,3 +1365,19 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--all-out", default="loinc_lookup_all_candidates.csv",
                    help="Output CSV path for ALL enriched candidates (default: loinc_lookup_all_candidates.csv)")
     return p.parse_args()
+
+
+def main():
+    args = parse_args()
+    terms = args.terms if args.terms else DEFAULT_TERMS
+    run(
+        terms=terms,
+        out_csv=args.out,
+        count_per_variant=args.count,
+        top_k=args.top_k,
+        sleep_sec=args.sleep,
+        creds_path=args.creds,
+        save_all_candidates=args.save_all_candidates,
+        all_candidates_out=args.all_out,
+    )
+

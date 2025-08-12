@@ -124,3 +124,24 @@ def expected_properties_for_intent(user_term: str, normalized: str) -> Optional[
     # Gestational age: not gating on PROPERTY
     return None
 
+
+def _tidy(s: str) -> str:
+    return (s or "").strip().strip("\r").strip("\n")
+
+
+def read_creds_from_file(path: str) -> Optional[Tuple[str, str]]:
+    """Two-line text file: line1=username (email), line2=password."""
+    if not path or not os.path.isfile(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        lines = [ln.strip() for ln in f.readlines()]
+    lines = [ln for ln in lines if ln.strip()]
+    if len(lines) < 2:
+        raise RuntimeError(
+            f"Credentials file '{path}' must have two non-empty lines:\n"
+            "  line 1 = username (email)\n  line 2 = password"
+        )
+    return _tidy(lines[0]), _tidy(lines[1])
+
+
+def resolve_credentials(creds_path: Optional[str]) -> Tuple[str, str, str]:

@@ -1196,3 +1196,146 @@ def process_one_term(
 
     return {"best_rows": best_rows, "all_candidates": all_candidates, "normalized": normalized}
 
+
+# ----------------------------
+# Runner
+# ----------------------------
+
+def run(
+    terms: List[str],
+    out_csv: str,
+    count_per_variant: int,
+    top_k: int,
+    sleep_sec: float,
+    creds_path: Optional[str],
+    save_all_candidates: bool,
+    all_candidates_out: str,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Execute the lookup for all terms and write CSVs.
+
+    Parameters
+    ----------
+    terms : list of str
+        Input terms. If empty, DEFAULT_TERMS are used.
+    out_csv : str
+        Output CSV path for top-k results.
+    count_per_variant : int
+        Server-side candidate count per text variant for $expand.
+    top_k : int
+        How many top matches to keep per term.
+    sleep_sec : float
+        Seconds to sleep between $lookup calls.
+    creds_path : str or None
+        Path to two-line creds file.
+    save_all_candidates : bool
+        Whether to also save a CSV of all enriched candidates.
+    all_candidates_out : str
+        Output CSV path for the "all candidates" file.
+
+    Returns
+    -------
+    (best_rows_all_terms, all_candidates_all_terms)
+    """
+    user, pw, source = resolve_credentials(creds_path)
+    print(f"[auth] Using credentials from {source}")
+    session = make_requests_session(user, pw)
+    try:
+        assert_auth_ok(session)
+    except Exception:
+        print("Authentication check failed.\n")
+        raise
+
+    all_best_rows: List[Dict[str, Any]] = []
+    all_all_candidates: List[Dict[str, Any]] = []
+
+    for term in (terms or DEFAULT_TERMS):
+        result = process_one_term(session, term, count_per_variant, top_k, sleep_sec)
+        best_rows = result["best_rows"]
+        all_cands = result["all_candidates"]
+
+        all_best_rows.extend(best_rows)
+        if save_all_candidates:
+            all_all_candidates.extend(all_cands)
+
+    # -------- Console preview (best per term) --------
+    print("\n=== LOINC lookup preview (best per term) ===")
+    # pick the lowest rank (1 is best) per search_term
+    best_by_term: Dict[str, Dict[str, Any]] = {}
+    for r in all_best_rows:
+        key = r["search_term"]
+        current_rank = (best_by_term.get(key, {}).get("rank") or math.inf)
+        if r["rank"] is not None and (r["rank"] < current_rank):
+            best_by_term[key] = r
+        elif key not in best_by_term:
+            best_by_term[key] = r
+
+    # Print and flag suspicious bests
+    printed_warnings = []
+    for term, r in best_by_term.items():
+        if r.get("error"):
+            print(f"- {term}: ERROR — {r['error']}")
+            continue
+        code = r.get("loinc_code")
+        disp = r.get("display")
+        print(f"- {term}: {code} — {disp}")
+
+        # Warning banner when best pick is questionable for clinical reporting
+        warn_bits = []
+        if r.get("is_part"):
+            warn_bits.append("LOINC Part (not reportable)")
+        if r.get("is_answer_list"):
+            warn_bits.append("Answer list (not a measurement)")
+        if r.get("is_deprecated"):
+            warn_bits.append("DEPRECATED")
+        if r.get("is_derived"):
+            warn_bits.append("derived/methodized")
+        if r.get("is_percentile"):
+            warn_bits.append("percentile")
+        # If numeric intent but property/scale mismatch, flag loudly
+        num_hint = any(u in term.lower() for u in ["(cm)", "(mm)", "(g)", "(bpm)"]) or \
+                   any(k in term.lower() for k in ["length", "diameter", "circumference", "weight", "mass", "rate"])
+        if num_hint and (not r.get("property_match") or not r.get("scale_match")):
+            warn_bits.append("NOT Qn / PROPERTY mismatch for numeric intent")
+
+        if warn_bits:
+            printed_warnings.append((term, warn_bits))
+
+    if printed_warnings:
+        print("\nWARNING: Some 'best' picks have caveats:")
+        for term, bits in printed_warnings:
+            print(f"  • {term}: " + "; ".join(bits))
+        print("  (See CSV columns is_derived/is_percentile/scale_match/property_match/stage/score.)")
+
+    print("\n(See CSV for all matches and properties.)\n")
+
+    # -------- Write CSVs --------
+    if not all_best_rows:
+        print("No results to save.")
+        return all_best_rows, all_all_candidates
+
+    if pd is not None:
+        pd.DataFrame(all_best_rows).to_csv(out_csv, index=False)
+    else:
+        import csv
+        fieldnames = list(all_best_rows[0].keys())
+        with open(out_csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fieldnames)
+            w.writeheader(); w.writerows(all_best_rows)
+    print(f"Saved top-{top_k} results to: {out_csv}")
+
+    if save_all_candidates:
+        if all_all_candidates:
+            if pd is not None:
+                pd.DataFrame(all_all_candidates).to_csv(all_candidates_out, index=False)
+            else:
+                import csv
+                fieldnames = list(all_all_candidates[0].keys())
+                with open(all_candidates_out, "w", newline="", encoding="utf-8") as f:
+                    w = csv.DictWriter(f, fieldnames=fieldnames)
+                    w.writeheader(); w.writerows(all_all_candidates)
+            print(f"Saved ALL enriched candidates to: {all_candidates_out}")
+        else:
+            print("No 'all candidates' to save (none enriched).")
+
+    return all_best_rows, all_all_candidates

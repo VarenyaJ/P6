@@ -903,3 +903,296 @@ def filter_and_rank(
     accepted.sort(key=_key, reverse=True)
     return accepted
 
+
+# ----------------------------
+# Term processing (search → enrich → strict → relaxed)
+# ----------------------------
+
+def process_one_term(
+    session: requests.Session,
+    user_term: str,
+    count_per_variant: int,
+    top_k: int,
+    sleep_between_lookups: float,
+) -> Dict[str, Any]:
+    """
+    Run the full pipeline for a single term.
+
+    Returns
+    -------
+    dict
+        {
+          "best_rows": [top-k dicts ready for CSV],
+          "all_candidates": [all enriched dicts + flags + scores],
+          "normalized": "<normalized text>"
+        }
+    """
+    normalized = normalize_user_term(user_term)
+    variants = build_text_variants(user_term, normalized)
+    numeric_expected = user_term_implies_numeric(user_term, normalized)
+    expected_props = expected_properties_for_intent(user_term, normalized)
+
+    # Heuristic: allowing derived/percentile only if the user plainly asks for it
+    lu = user_term.lower()
+    allow_derived = ("estimated" in lu) or ("efw" in lu) or ("estimated fetal weight" in lu)
+    allow_percentile = ("percentile" in lu)
+
+    # Gather raw candidates across variants (dedup codes)
+    raw_candidates: Dict[str, Dict[str, Any]] = {}
+
+    # Per-variant trim scales with caller count and top_k
+    per_variant_cap = min(count_per_variant, max(200, top_k * 8))
+
+    for v in variants:
+        try:
+            contains = expand_valueset_candidates(session, v, count=count_per_variant)
+        except Exception:
+            continue
+        # lightweight trimming per variant
+        contains = sorted(contains, key=lambda c: prefilter_score_for_variant(c.get("display", ""), v), reverse=True)
+        for c in contains[:max(DEFAULT_MAX_VARIANT_RESULTS, per_variant_cap)]:
+            code = c.get("code")
+            if not code or code in raw_candidates:
+                continue
+            raw_candidates[code] = {"code": code, "display": c.get("display")}
+
+        if len(raw_candidates) >= GLOBAL_CANDIDATE_CAP:
+            break
+
+    if not raw_candidates:
+        return {
+            "best_rows": [{
+                "search_term": user_term,
+                "normalized_query": normalized,
+                "rank": None,
+                "loinc_code": None,
+                "display": None,
+                "definition": None,
+                "status": None,
+                "class": None,
+                "system": None,
+                "property": None,
+                "time": None,
+                "method": None,
+                "scale": None,
+                "example_units": None,
+                "system_core": None,
+                "super_system": None,
+                "time_core": None,
+                "time_modifier": None,
+                "analyte": None,
+                "analyte_core": None,
+                "analyte_suffix": None,
+                "analyte_numerator": None,
+                "analyte_divisor": None,
+                "analyte_divisor_suffix": None,
+                "category": None,
+                "search_terms": None,
+                "display_name": None,
+                "is_part": None,
+                "is_answer_list": None,
+                "is_deprecated": None,
+                "is_derived": None,
+                "is_percentile": None,
+                "has_laterality": None,
+                "property_match": None,
+                "scale_match": None,
+                "stage": None,
+                "score": None,
+                "error": "No candidates returned"
+            }],
+            "all_candidates": [],
+            "normalized": normalized,
+        }
+
+    # Enrich with $lookup
+    enriched: List[Dict[str, Any]] = []
+    for code in raw_candidates:
+        time.sleep(sleep_between_lookups)  # politeness
+        try:
+            d = lookup_loinc_details(session, code)
+            enriched.append(d)
+        except Exception:
+            # skip individual lookup errors; keep going
+            continue
+
+    # STRICT filter & rank
+    strict_ranked = filter_and_rank(
+        enriched, user_term, normalized,
+        numeric_expected=numeric_expected, expected_props=expected_props,
+        strict=True, allow_derived=allow_derived, allow_percentile=allow_percentile
+    )
+    chosen = strict_ranked[:top_k]
+
+    # RELAXED fallback (still excludes LP/LA/deprecated; allows derived/percentile)
+    if len(chosen) < top_k:
+        relaxed_ranked = filter_and_rank(
+            enriched, user_term, normalized,
+            numeric_expected=numeric_expected, expected_props=expected_props,
+            strict=False, allow_derived=True, allow_percentile=True
+        )
+        # keep adding until top_k
+        for row in relaxed_ranked:
+            if len(chosen) >= top_k:
+                break
+            # Avoid duplicates if any code was already chosen
+            if row["code"] not in {c["code"] for c in chosen}:
+                chosen.append(row)
+
+    # Prepare unified "all candidates" (strict + relaxed scores/flags)
+    all_candidates: List[Dict[str, Any]] = []
+    for d in enriched:
+        flags = compute_feature_flags(d, numeric_expected, expected_props)
+        score_strict = final_score(
+            details=d,
+            user_term=user_term,
+            normalized=normalized,
+            flags=flags,
+            allow_derived=allow_derived,
+            allow_percentile=allow_percentile,
+            numeric_expected=numeric_expected,
+            expected_props=expected_props,
+        )
+        # Also compute a relaxed score for comparison
+        score_relaxed = final_score(
+            details=d,
+            user_term=user_term,
+            normalized=normalized,
+            flags=flags,
+            allow_derived=True,
+            allow_percentile=True,
+            numeric_expected=False,        # relaxed ignores numeric gate in score
+            expected_props=expected_props,
+        )
+        props = d.get("properties", {}) if d else {}
+        all_candidates.append({
+            "search_term": user_term,
+            "normalized_query": normalized,
+            "loinc_code": d.get("code"),
+            "display": d.get("display"),
+            "status": d.get("status"),
+            "definition": d.get("definition"),
+            "class": props.get("CLASS"),
+            "system": props.get("SYSTEM"),
+            "property": props.get("PROPERTY"),
+            "time": props.get("TIME_ASPCT"),
+            "method": props.get("METHOD_TYP"),
+            "scale": props.get("SCALE_TYP"),
+            "example_units": props.get("EXAMPLE_UCUM_UNITS"),
+            "system_core": props.get("system-core"),
+            "super_system": props.get("super-system"),
+            "time_core": props.get("time-core"),
+            "time_modifier": props.get("time-modifier"),
+            "analyte": props.get("analyte"),
+            "analyte_core": props.get("analyte-core"),
+            "analyte_suffix": props.get("analyte-suffix"),
+            "analyte_numerator": props.get("analyte-numerator"),
+            "analyte_divisor": props.get("analyte-divisor"),
+            "analyte_divisor_suffix": props.get("analyte-divisor-suffix"),
+            "category": props.get("category"),
+            "search_terms": props.get("search"),
+            "display_name": props.get("DisplayName"),
+            "is_part": flags["is_part"],
+            "is_answer_list": flags["is_answer_list"],
+            "is_deprecated": flags["is_deprecated"],
+            "is_derived": flags["is_derived"],
+            "is_percentile": flags["is_percentile"],
+            "has_laterality": flags["has_laterality"],
+            "property_match": flags["property_match"],
+            "scale_match": flags["scale_match"],
+            "score_strict": score_strict,
+            "score_relaxed": score_relaxed,
+        })
+
+    # Convert chosen rows to output schema (top-k only)
+    best_rows: List[Dict[str, Any]] = []
+    for rank_idx, row in enumerate(chosen, start=1):
+        props = row.get("properties", {}) if row else {}
+        flags = row.get("_flags", {})
+        best_rows.append({
+            "search_term": user_term,
+            "normalized_query": normalized,
+            "rank": float(rank_idx),
+            "loinc_code": row.get("code"),
+            "display": row.get("display"),
+            "definition": row.get("definition"),
+            "status": row.get("status"),
+            "class": props.get("CLASS"),
+            "system": props.get("SYSTEM"),
+            "property": props.get("PROPERTY"),
+            "time": props.get("TIME_ASPCT"),
+            "method": props.get("METHOD_TYP"),
+            "scale": props.get("SCALE_TYP"),
+            "example_units": props.get("EXAMPLE_UCUM_UNITS"),
+            "system_core": props.get("system-core"),
+            "super_system": props.get("super-system"),
+            "time_core": props.get("time-core"),
+            "time_modifier": props.get("time-modifier"),
+            "analyte": props.get("analyte"),
+            "analyte_core": props.get("analyte-core"),
+            "analyte_suffix": props.get("analyte-suffix"),
+            "analyte_numerator": props.get("analyte-numerator"),
+            "analyte_divisor": props.get("analyte-divisor"),
+            "analyte_divisor_suffix": props.get("analyte-divisor-suffix"),
+            "category": props.get("category"),
+            "search_terms": props.get("search"),
+            "display_name": props.get("DisplayName"),
+            # Flags & scoring
+            "is_part": flags.get("is_part"),
+            "is_answer_list": flags.get("is_answer_list"),
+            "is_deprecated": flags.get("is_deprecated"),
+            "is_derived": flags.get("is_derived"),
+            "is_percentile": flags.get("is_percentile"),
+            "has_laterality": flags.get("has_laterality"),
+            "property_match": flags.get("property_match"),
+            "scale_match": flags.get("scale_match"),
+            "stage": row.get("_stage"),
+            "score": row.get("_score"),
+            "error": None
+        })
+
+    # If *no* acceptable matches after strict+relaxed
+    if not best_rows:
+        best_rows.append({
+            "search_term": user_term,
+            "normalized_query": normalized,
+            "rank": None,
+            "loinc_code": None,
+            "display": None,
+            "definition": None,
+            "status": None,
+            "class": None,
+            "system": None,
+            "property": None,
+            "time": None,
+            "method": None,
+            "scale": None,
+            "example_units": None,
+            "system_core": None,
+            "super_system": None,
+            "time_core": None,
+            "time_modifier": None,
+            "analyte": None,
+            "analyte_core": None,
+            "analyte_suffix": None,
+            "analyte_numerator": None,
+            "analyte_divisor": None,
+            "analyte_divisor_suffix": None,
+            "category": None,
+            "search_terms": None,
+            "display_name": None,
+            "is_part": None,
+            "is_answer_list": None,
+            "is_deprecated": None,
+            "is_derived": None,
+            "is_percentile": None,
+            "has_laterality": None,
+            "property_match": None,
+            "scale_match": None,
+            "stage": None,
+            "score": None,
+            "error": "No acceptable matches after filtering"
+        })
+
+    return {"best_rows": best_rows, "all_candidates": all_candidates, "normalized": normalized}
+

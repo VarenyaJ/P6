@@ -16,32 +16,6 @@ This version focuses on:
   • **Improved recall** for ratio/qualitative terms via curated variants & fallbacks
   • **Deterministic ranking** with secondary ties broken by numeric/Qn preference
 
-For Clinicians
---------------
-- Results are labeled and flagged clearly:
-    is_part, is_answer_list, is_deprecated, is_derived, is_percentile,
-    has_laterality, property_match, scale_match, stage (strict|relaxed), score.
-- Numeric terms (cm/mm/g/bpm; “length/diameter/circumference/weight/rate”)
-  prefer **SCALE_TYP=Qn** and the expected **PROPERTY** (e.g., Circ, Diam, Len, Mass, Rate).
-- Fallback (RELAXED) still excludes Parts/AnswerLists/deprecated but allows
-  methodized/derived/percentile if nothing else is available—**and flags them.**
-
-For Bioinformaticians
----------------------
-- Candidates come from `ValueSet/$expand` on the implicit LOINC ValueSet
-  `http://loinc.org/vs` using multiple **LOINC-style phrase variants**.
-- Details from `CodeSystem/$lookup` populate properties like PROPERTY, SCALE_TYP,
-  SYSTEM, METHOD_TYP, and more. We score + filter using these properties.
-- We provide an **optional all-candidates CSV** (`--save-all-candidates`)
-  containing every enriched candidate with scores and gating flags for audit.
-
-For Computer Scientists
------------------------
-- Clear separation of concerns (auth, HTTP, candidates, enrichment, gating, ranking).
-- Idempotent GET with exponential backoff on 429/5xx; fast-fail on 401 with hints.
-- Deterministic ranking with explicit feature-based scoring and **stable tie-breaks**.
-- CSV outputs are schema-stable; columns are documented in code.
-
 Authentication (priority order)
 -------------------------------
 1) `--creds /path/to/file` (two lines: username, password)   [recommended]

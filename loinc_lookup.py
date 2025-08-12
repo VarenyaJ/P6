@@ -619,3 +619,106 @@ def lookup_loinc_details(session: requests.Session, code: str) -> Dict[str, Any]
             if prop_code and prop_value:
                 out.setdefault("properties", {})[prop_code] = prop_value
     return out
+
+
+# ----------------------------
+# Classification flags & acceptance checks
+# ----------------------------
+
+def is_loinc_part(code: Optional[str]) -> bool:
+    """LOINC Part codes start with 'LP' and are *not* reportable observations."""
+    return bool(code) and code.startswith("LP")
+
+
+def is_loinc_answer_list(code: Optional[str]) -> bool:
+    """LOINC Answer List/Answer codes start with 'LA' and are *not* observations."""
+    return bool(code) and code.startswith("LA")
+
+
+def is_deprecated(status: Optional[str], display: Optional[str]) -> bool:
+    if status and status.upper() == "DEPRECATED":
+        return True
+    return bool(display) and "deprecated" in display.lower()
+
+
+def looks_derived_or_methodized(display: Optional[str]) -> bool:
+    """
+    Heuristics for "derived/method" wording we want to avoid unless requested.
+    """
+    if not display:
+        return False
+    d = display.lower()
+    if "estimated from" in d:
+        return True
+    if " by " in d and " method" in d:
+        return True
+    if any(x in d for x in ["hadlock", "jeanty", "merz", "ott", "goldstein"]):
+        return True
+    if any(x in d for x in ["amniocentesis", "lmp", "menstrual period"]):
+        return True
+    return False
+
+
+def mentions_percentile(display: Optional[str]) -> bool:
+    return bool(display) and "percentile" in display.lower()
+
+
+def mentions_laterality(display: Optional[str]) -> bool:
+    if not display:
+        return False
+    d = display.lower()
+    return any(w in d for w in [" left ", " right ", " left]", " right]", "left ", "right "])
+
+
+def _norm_str(x: Optional[str]) -> str:
+    """
+    Normalize simple code/property strings for robust comparisons.
+    """
+    return (x or "").strip()
+
+
+def compute_feature_flags(
+    details: Dict[str, Any],
+    numeric_expected: bool,
+    expected_props: Optional[set],
+) -> Dict[str, Any]:
+    """
+    Derive useful booleans/fields from $lookup 'details' so reviewers can see
+    exactly *why* a candidate was (not) accepted or penalized.
+
+    Returns
+    -------
+    dict
+        booleans for is_part/is_answer_list/is_deprecated/is_derived/is_percentile,
+        laterality, and property/scale matches.
+    """
+    disp = details.get("display") or ""
+    status = details.get("status")
+    props = details.get("properties", {}) if "properties" in details else {}
+    code = details.get("code") or ""
+
+    flag_is_part = is_loinc_part(code)
+    flag_is_answer = is_loinc_answer_list(code)
+    flag_is_depr = is_deprecated(status, disp)
+    flag_is_derived = looks_derived_or_methodized(disp)
+    flag_is_percentile = mentions_percentile(disp)
+    flag_has_laterality = mentions_laterality(disp)
+
+    scale = _norm_str(props.get("SCALE_TYP"))
+    prop_kind = _norm_str(props.get("PROPERTY"))
+    expected_norm = {(_norm_str(p)) for p in (expected_props or set())}
+
+    # Acceptance checks for strict stage when numeric is expected
+    prop_match = (not expected_norm) or (prop_kind in expected_norm)
+    scale_match = (not numeric_expected) or (scale.upper() == "QN")
+
+    return {
+        "is_part": flag_is_part,
+        "is_answer_list": flag_is_answer,
+        "is_deprecated": flag_is_depr,
+        "is_derived": flag_is_derived,
+        "is_percentile": flag_is_percentile,
+        "has_laterality": flag_has_laterality,
+        "property_match": prop_match,
+        "scale_match": scale_match,
+    }

@@ -722,3 +722,184 @@ def compute_feature_flags(
         "property_match": prop_match,
         "scale_match": scale_match,
     }
+
+
+# ----------------------------
+# Scoring and filtering
+# ----------------------------
+
+def prefilter_score_for_variant(display: str, variant_text: str) -> int:
+    """Lightweight score to trim each variant's raw results before $lookup."""
+    disp = (display or "").lower()
+    s = 0
+    for w in SOFT_CONTEXT_TOKENS:
+        if w in disp:
+            s += 2
+    for tok in variant_text.lower().split():
+        if tok and tok in disp:
+            s += 1
+    return s
+
+
+def final_score(
+    details: Dict[str, Any],
+    user_term: str,
+    normalized: str,
+    flags: Dict[str, Any],
+    allow_derived: bool,
+    allow_percentile: bool,
+    numeric_expected: bool,
+    expected_props: Optional[set],
+) -> int:
+    """
+    Deterministic feature-based scoring:
+
+    Positive
+    --------
+    + expected PROPERTY (big)
+    + SCALE_TYP=Qn for numeric
+    + ultrasound/fetal context
+    + minor token overlaps
+    + small universal nudge for Qn
+
+    Negative
+    --------
+    - derived/method unless allowed
+    - percentile unless allowed
+    - laterality unless requested
+    - narrative/ordinal signal when numeric expected
+    """
+    disp = (details.get("display") or "").lower()
+    props = details.get("properties", {}) if "properties" in details else {}
+    cls = (props.get("CLASS") or "").lower()
+    system = (props.get("SYSTEM") or "").lower()
+    sys_core = (props.get("system-core") or "").lower()
+    super_sys = (props.get("super-system") or "").lower()
+    status = details.get("status") or ""
+
+    s = 0
+
+    # PROPERTY/SCALE
+    if expected_props and props.get("PROPERTY") in expected_props:
+        s += 12  # dominant signal for intent
+    if numeric_expected and props.get("SCALE_TYP") == "Qn":
+        s += 6
+
+    # Universal nudge toward Qn (helps FHR numeric forms beat reactivity)
+    if props.get("SCALE_TYP") == "Qn":
+        s += 2
+
+    # Context (soft)
+    if "us" in cls or "ob" in cls or "ultrasound" in disp or " us" in disp:
+        s += 3
+    if "fetal" in disp or "fetus" in disp or super_sys == "fetus" or "fetus" in sys_core or "fetus" in system:
+        s += 2
+
+    # Penalties
+    if not allow_derived and flags["is_derived"]:
+        s -= 10
+    if allow_derived and flags["is_derived"]:
+        s -= 4
+
+    if not allow_percentile and flags["is_percentile"]:
+        s -= 8
+    if allow_percentile and flags["is_percentile"]:
+        s -= 2
+
+    want_laterality = any(w in user_term.lower() for w in ["left", "right"])
+    if flags["has_laterality"] and not want_laterality:
+        s -= 3
+
+    # Narrative/ordinal penalty if numeric intent
+    if numeric_expected and ((props.get("SCALE_TYP") in {"Ord", "Nar"}) or "narrative" in disp):
+        s -= 4
+
+    # Token overlap
+    for tok in normalized.lower().split():
+        if tok and tok in disp:
+            s += 1
+
+    # Safety nudge
+    code = details.get("code") or ""
+    if not code.startswith(("LP", "LA")):
+        s += 1
+    if not is_deprecated(status, details.get("display")):
+        s += 1
+
+    return s
+
+
+def filter_and_rank(
+    enriched: List[Dict[str, Any]],
+    user_term: str,
+    normalized: str,
+    numeric_expected: bool,
+    expected_props: Optional[set],
+    strict: bool,
+    allow_derived: bool,
+    allow_percentile: bool,
+) -> List[Dict[str, Any]]:
+    """
+    STRICT:
+      - Exclude Parts/AnswerLists/Deprecated
+      - Exclude derived/method unless allow_derived
+      - Exclude percentile unless allow_percentile
+      - If numeric_expected: require SCALE_TYP=Qn AND PROPERTY in expected set (if provided)
+    RELAXED:
+      - Still exclude Parts/AnswerLists/Deprecated
+      - Allow derived/percentile (but score penalizes them)
+      - Drop the hard requirement on PROPERTY/SCALE (but scoring still prefers them)
+    """
+    accepted: List[Dict[str, Any]] = []
+
+    for d in enriched:
+        flags = compute_feature_flags(d, numeric_expected, expected_props)
+
+        # Hard drops common to both modes
+        if flags["is_part"] or flags["is_answer_list"] or flags["is_deprecated"]:
+            continue
+
+        if strict:
+            if not allow_derived and flags["is_derived"]:
+                continue
+            if not allow_percentile and flags["is_percentile"]:
+                continue
+            if numeric_expected:
+                if not flags["scale_match"]:
+                    continue
+                # If we know what PROPERTY we want, require it strictly
+                if expected_props and not flags["property_match"]:
+                    continue
+
+        # Score and annotate
+        s = final_score(
+            details=d,
+            user_term=user_term,
+            normalized=normalized,
+            flags=flags,
+            allow_derived=allow_derived,
+            allow_percentile=allow_percentile,
+            numeric_expected=numeric_expected,
+            expected_props=expected_props,
+        )
+        row = dict(d)  # shallow copy
+        row["_flags"] = flags
+        row["_score"] = s
+        row["_stage"] = "strict" if strict else "relaxed"
+        accepted.append(row)
+
+    # Sort by main score with deterministic tie-breakers favoring numeric/Qn
+    def _key(x: Dict[str, Any]):
+        f = x["_flags"]
+        # prefer property/scale matches when numeric; prefer not-derived, not-percentile
+        sec = (
+            1 if f.get("property_match") else 0,
+            1 if f.get("scale_match") else 0,
+            0 if f.get("is_derived") else 1,
+            0 if f.get("is_percentile") else 1,
+        )
+        return (x["_score"],) + sec
+
+    accepted.sort(key=_key, reverse=True)
+    return accepted
+

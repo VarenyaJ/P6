@@ -26,3 +26,101 @@ DEFAULT_SLEEP_SEC = 0.2            # politeness throttle between $lookup calls
 # >>> Recall & breadth controls (raised caps; still bounded for runtime sanity)
 DEFAULT_MAX_VARIANT_RESULTS = 200  # per-variant trim cap after lightweight scoring (was 20)
 GLOBAL_CANDIDATE_CAP = 1200        # guardrail across variants (was 400)
+
+# Basic clinical abbreviations → plain words for search expansion
+ABBREV_TO_WORDS = {"BPD": "biparietal diameter", "HC": "head circumference", "AC": "abdominal circumference", "FL": "femur length", "EFW": "estimated fetal weight", "FHR": "fetal heart rate"}
+
+# Soft-preference tokens (we boost but never hard-restrict)
+SOFT_CONTEXT_TOKENS = ["fetal", "fetus", "ultrasound", "us", "pregnancy", "obstetric"]
+
+# Hand-curated hints for tricky displays that the filter text alone often misses.
+# These give $expand exactly the strings that appear in LOINC displays.
+HARD_HINTS: Dict[str, List[str]] = {
+    "hc/ac": [
+        "Head circumference/Abdominal circumference derived by US",
+        "Head circumference/Abdominal circumference derived by ultrasound",
+    ],
+    "fl/ac": [
+        "Femur length/Abdominal circumference derived by US",
+        "Femur length/Abdominal circumference derived by ultrasound",
+    ],
+    "fl/bpd": [
+        "Femur length/Biparietal diameter derived by US",
+        "Femur length/Biparietal diameter derived by ultrasound",
+    ],
+    "efw": [
+        "Estimated fetal weight [Mass] US",
+        "Fetal body weight [Mass] US",
+        "Fetus body weight [Mass] US",
+        "EFW [Mass] US",
+    ],
+    "placenta appearance": [
+        "Placenta morphology [Text] US",
+        "Placenta structure [Presence] fetus US",
+        "Placenta abnormality [Presence] fetus US",
+    ],
+    "heart abnormal": [
+        "Cardiac abnormality [Presence] fetus US",
+        "Heart anomaly [Presence] fetus US",
+    ],
+    "head abnormal": [
+        "Head abnormality [Presence] fetus US",
+        "Cranial abnormality [Presence] fetus US",
+    ],
+    "face/neck abnormal": [
+        "Face abnormality [Presence] fetus US",
+        "Neck abnormality [Presence] fetus US",
+        "Facial anomaly [Presence] fetus",
+    ],
+    "spine abnormal": [
+        "Spinal abnormality [Presence] fetus US",
+        "Spine anomaly [Presence] fetus",
+    ],
+    "genitalia normal": [
+        "Genitalia normal [Presence] fetus",
+        "Genitalia abnormality [Presence] fetus",
+    ],
+}
+
+# Default term list requested earlier
+DEFAULT_TERMS = ["Gestational Age", "BPD (cm)", "HC (cm)", "AC (cm)", "Femur (cm)", "Cerebellum (cm)", "Cisterna Magna (mm)", "Humerus (cm)", "Radius (cm)", "Ulna (cm)", "Tibia (cm)", "Fibula (cm)", "HC/AC", "FL/AC", "FL/BPD", "EFW (g)", "EFW Percentile", "FHR (bpm)", "Presentation", "Placenta Appearance", "Heart Abnormal", "Head Abnormal", "Face/Neck Abnormal", "Spine Abnormal", "Genitalia Normal"]
+
+# When a term implies a numeric observation, we expect PROPERTY and SCALE_TYP.
+# PROPERTY expectations by intent (a *set* so we can accept multiple)
+def expected_properties_for_intent(user_term: str, normalized: str) -> Optional[set]:
+    """
+    Decide expected PROPERTY set based on term intent.
+
+    Parameters
+    ----------
+    user_term : str
+        Original input term (may contain units or abbreviations).
+    normalized : str
+        Normalized term (abbreviations expanded, ratios verbalized).
+
+    Returns
+    -------
+    set or None
+        A set of acceptable PROPERTY values (e.g., {"Circ"}), or None if not gated.
+    """
+    text = f"{user_term} {normalized}".lower()
+    if "circumference" in text:
+        return {"Circ"}
+    if "diameter" in text or "bpd" in text:
+        # BPD sometimes shows as Length (Len) instead of Diameter (Diam)
+        return {"Diam", "Len"}
+    if any(k in text for k in ["length", "femur", "humerus", "radius", "ulna", "tibia", "fibula", "long bone"]):
+        return {"Len"}
+    if "heart rate" in text or "fhr" in text or "rate" in text:
+        return {"Rate"}
+    if "estimated fetal weight" in text or "efw" in text or "weight" in text or "mass" in text:
+        return {"Mass"}
+    if "cisterna magna" in text:
+        return {"Diam", "Len"}
+    if "cerebellum" in text:
+        return {"Diam", "Len", "Circ"}
+    if " ratio " in text or "/" in strip_units(user_term):
+        return {"Rto"}
+    # Gestational age: not gating on PROPERTY
+    return None
+

@@ -275,3 +275,180 @@ def user_term_implies_numeric(user_term: str, normalized: str) -> bool:
 def is_ratio_intent(user_term: str, normalized: str) -> bool:
     return (" ratio " in f"{user_term} {normalized}".lower()) or ("/" in strip_units(user_term))
 
+
+
+
+def build_text_variants(user_term: str, normalized: str) -> List[str]:
+    """
+    Construct a diverse set of LOINC-style phrases to pass to ValueSet/$expand.
+
+    Strategy
+    --------
+    - Start with normalized text + ultrasound variants
+    - Add bracketed unit/quantity hints ([Length], [Diameter], [Circumference], [Mass], [Rate])
+    - Inject common LOINC wording patterns (e.g., "Head Diameter.biparietal")
+    - Add qualitative presence/morphology phrasing for non-numeric intents
+    - **Add literal ratio forms (A/B) and "derived by US" phrasings**
+    - **Inject hand-curated HARD_HINTS for tricky, high-value targets**
+    """
+    terms: List[str] = []
+
+    # Base + ultrasound context (soft)
+    terms.append(normalized)
+    terms.extend([f"{normalized} ultrasound", f"{normalized} US"])
+
+    # Bracketed style hints seen in LOINC displays
+    terms.extend([
+        f"{normalized} [Length]",
+        f"{normalized} [Diameter]",
+        f"{normalized} [Circumference]",
+        f"{normalized} [Mass]",
+        f"{normalized} [Rate]",
+    ])
+
+    ln = normalized.lower()
+    lu = user_term.lower()
+
+    # --- Specific measurement families (LOINC-ish phrasing) ---
+
+    # BPD
+    if "biparietal diameter" in ln or "bpd" in lu:
+        terms.extend([
+            "Head Diameter.biparietal [Length] fetus US",
+            "Head biparietal diameter [Length] fetus US",
+            "Fetal head biparietal diameter [Length] US",
+        ])
+
+    # HC
+    if "head circumference" in ln or "hc" in lu:
+        terms.extend([
+            "Head [Circumference] fetus US",
+        ])
+
+    # AC
+    if "abdominal circumference" in ln or "ac" in lu:
+        terms.extend([
+            "Abdomen [Circumference] fetus US",
+            "Abdominal circumference fetus US",
+        ])
+
+    # Long bones
+    if any(b in ln or b in lu for b in ["femur", "humerus", "radius", "ulna", "tibia", "fibula"]):
+        bone = None
+        for b in ["femur", "humerus", "radius", "ulna", "tibia", "fibula"]:
+            if b in ln or b in lu:
+                bone = b
+                break
+        if bone:
+            terms.extend([
+                f"{bone.title()} diaphysis fetus [Length] US",
+                f"Fetal {bone} length [Length] US",
+            ])
+
+    # Cerebellum / Cisterna magna
+    if "cerebellum" in ln:
+        terms.extend([
+            "Cerebellum fetus [Diameter] US",
+            "Cerebellum Diameter transverse fetus US",
+        ])
+    if "cisterna magna" in ln:
+        terms.extend([
+            "Cisterna magna fetus [Diameter] US",
+            "Fetal cisterna magna sagittal diameter US",
+        ])
+
+    # --- Ratios (spell out both ways + literal) ---
+    if is_ratio_intent(user_term, normalized):
+        a, b = None, None
+        if " ratio " in ln:
+            parts = ln.split(" ratio ")
+            if len(parts) == 2:
+                a, b = parts[0], parts[1]
+        else:
+            raw = [p.strip() for p in strip_units(user_term).split("/")]
+            if len(raw) == 2:
+                a = ABBREV_TO_WORDS.get(raw[0].upper(), raw[0]).lower()
+                b = ABBREV_TO_WORDS.get(raw[1].upper(), raw[1]).lower()
+        if a and b:
+            # spelled-out variations
+            terms.extend([
+                f"{a}/{b}",
+                f"{a}/{b} ratio",
+                f"{a} to {b} ratio",
+                f"ratio of {a} to {b}",
+                f"{a} divided by {b}",
+                f"{a} over {b}",
+                f"{a.title()} / {b.title()} derived by US",
+                f"{a.title()} / {b.title()} derived by ultrasound",
+            ])
+            # keep the literal user token too (e.g., "HC/AC")
+            raw_lit = strip_units(user_term)
+            terms.append(raw_lit)
+            terms.append(raw_lit.upper())
+
+    # EFW – focus on mass, not percentile/panels
+    if "estimated fetal weight" in ln or "efw" in lu:
+        terms.extend([
+            "Estimated fetal weight [Mass] US",
+            "Fetal body weight [Mass] US",
+            "Fetus body weight [Mass] US",
+            "EFW [Mass] US",
+        ])
+
+    # FHR – include US and auscultation variants
+    if "fetal heart rate" in ln or "fhr" in lu:
+        terms.extend([
+            "Fetal heart rate [Rate] US",
+            "Fetal heart rate US",
+            "Fetal heart rate by auscultation",
+            "Fetal heart rate mean 10 minutes",
+            "Fetal heart rate reactivity",
+        ])
+
+    # Qualitative presence/morphology variants (beyond HARD_HINTS; keep generic)
+    qual_map = {
+        "placenta appearance": [
+            "Placenta morphology [Text] US",
+            "Placenta abnormality [Presence] fetus US",
+        ],
+        "heart abnormal": [
+            "Cardiac abnormality [Presence] fetus US",
+            "Heart anomaly [Presence] fetus US",
+        ],
+        "head abnormal": [
+            "Head abnormality [Presence] fetus US",
+            "Cranial abnormality [Presence] fetus US",
+        ],
+        "face/neck abnormal": [
+            "Face abnormality [Presence] fetus US",
+            "Neck abnormality [Presence] fetus US",
+            "Facial anomaly [Presence] fetus",
+        ],
+        "spine abnormal": [
+            "Spinal abnormality [Presence] fetus US",
+            "Spine anomaly [Presence] fetus",
+        ],
+        "genitalia normal": [
+            "Genitalia normal [Presence] fetus",
+            "Genitalia abnormality [Presence] fetus",
+        ],
+    }
+    for k, variants in qual_map.items():
+        if k in lu:
+            terms.extend(variants)
+
+    # --- Inject hand-curated HARD_HINTS ---
+    key = strip_units(user_term).lower()
+    key_compact = key.replace(" ", "")
+    terms.extend(HARD_HINTS.get(key, []))
+    terms.extend(HARD_HINTS.get(key_compact, []))
+
+    # Deduplicate while preserving order
+    seen = set()
+    uniq: List[str] = []
+    for t in terms:
+        if t not in seen:
+            uniq.append(t)
+            seen.add(t)
+    return uniq
+

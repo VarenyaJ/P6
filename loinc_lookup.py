@@ -227,3 +227,51 @@ def http_get_json(session: requests.Session, url: str, params: Optional[Dict[str
 def assert_auth_ok(session: requests.Session) -> None:
     _ = http_get_json(session, f"{FHIR_BASE}/CodeSystem",
                       params={"url": "http://loinc.org", "_format": "json"})
+
+
+def strip_units(user_term: str) -> str:
+    """Remove trailing '(unit)' to get a clean base expression."""
+    t = user_term.strip()
+    if "(" in t and ")" in t and t.index("(") < t.index(")"):
+        return t[:t.index("(")].strip()
+    return t
+
+
+def normalize_user_term(user_term: str) -> str:
+    """
+    Expand abbreviations; rewrite ratios into words so free text matching works.
+      e.g., "HC/AC" → "head circumference ratio abdominal circumference"
+    """
+    base = strip_units(user_term)
+    upper_no_space = base.upper().replace(" ", "")
+    for abbr, words in ABBREV_TO_WORDS.items():
+        if upper_no_space == abbr or base.upper() == abbr:
+            return words
+    if "/" in base:  # ratio shorthand
+        a, b = [p.strip() for p in base.split("/", 1)]
+        a = ABBREV_TO_WORDS.get(a.upper(), a)
+        b = ABBREV_TO_WORDS.get(b.upper(), b)
+        return f"{a} ratio {b}"
+    return base
+
+
+def user_term_implies_numeric(user_term: str, normalized: str) -> bool:
+    """
+    If the term implies a numeric value, we require Qn and PROPERTY in strict mode.
+
+    Signals
+    -------
+    explicit units; words like length/diameter/circumference/weight/rate.
+    """
+    t = f"{user_term} {normalized}".lower()
+    if any(u in user_term.lower() for u in ["(cm)", "(mm)", "(g)", "(bpm)"]):
+        return True
+    for k in ["length", "diameter", "circumference", "weight", "mass", "rate"]:
+        if k in t:
+            return True
+    return False
+
+
+def is_ratio_intent(user_term: str, normalized: str) -> bool:
+    return (" ratio " in f"{user_term} {normalized}".lower()) or ("/" in strip_units(user_term))
+

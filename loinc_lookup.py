@@ -1381,3 +1381,6 @@ def main():
         all_candidates_out=args.all_out,
     )
 
+
+if __name__ == "__main__":
+    main()

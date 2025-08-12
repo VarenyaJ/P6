@@ -1339,3 +1339,29 @@ def run(
             print("No 'all candidates' to save (none enriched).")
 
     return all_best_rows, all_all_candidates
+
+
+# ----------------------------
+# CLI
+# ----------------------------
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Look up LOINC codes/labels/definitions via the official LOINC FHIR Terminology Service."
+    )
+    p.add_argument("terms", nargs="*", help="Search terms. If omitted, uses an obstetric ultrasound default list.")
+    p.add_argument("--out", default="loinc_lookup_results.csv",
+                   help="Output CSV path for top-k results (default: loinc_lookup_results.csv)")
+    p.add_argument("--count", type=int, default=50,
+                   help="Server-side candidate count per text variant for $expand (default: 50)")
+    p.add_argument("--top-k", type=int, default=5,
+                   help="How many top matches to keep per term (default: 5)")
+    p.add_argument("--sleep", type=float, default=DEFAULT_SLEEP_SEC,
+                   help=f"Seconds to sleep between $lookup calls (default: {DEFAULT_SLEEP_SEC})")
+    p.add_argument("--creds", default=None,
+                   help=f"Path to creds file (two lines: username, password). If omitted, uses env or ./loinc_creds.txt")
+    p.add_argument("--save-all-candidates", action="store_true",
+                   help="Also save a CSV with ALL enriched candidates and their flags/scores (audit trail).")
+    p.add_argument("--all-out", default="loinc_lookup_all_candidates.csv",
+                   help="Output CSV path for ALL enriched candidates (default: loinc_lookup_all_candidates.csv)")
+    return p.parse_args()

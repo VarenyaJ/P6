@@ -145,3 +145,85 @@ def read_creds_from_file(path: str) -> Optional[Tuple[str, str]]:
 
 
 def resolve_credentials(creds_path: Optional[str]) -> Tuple[str, str, str]:
+    """
+    Find LOINC credentials using CLI, env, or local file.
+
+    Returns
+    -------
+    (user, password, source_desc)
+    """
+    if creds_path:
+        got = read_creds_from_file(creds_path)
+        if got:
+            u, p = got
+            if not u or not p:
+                raise SystemExit(f"Credentials in '{creds_path}' are missing/empty.")
+            return u, p, f"file:{creds_path}"
+    env_u = _tidy(os.environ.get("LOINC_USER", ""))
+    env_p = _tidy(os.environ.get("LOINC_PASS", ""))
+    if env_u and env_p:
+        return env_u, env_p, "env:LOINC_USER/LOINC_PASS"
+    got = read_creds_from_file("loinc_creds.txt")
+    if got:
+        u, p = got
+        if not u or not p:
+            raise SystemExit("Found 'loinc_creds.txt' but a line was empty.")
+        return u, p, "file:loinc_creds.txt"
+    raise SystemExit(
+        "No LOINC credentials found.\n"
+        "Provide --creds /path/to/loinc_creds.txt (two lines), or set env LOINC_USER/LOINC_PASS,\n"
+        "or put 'loinc_creds.txt' in the working directory."
+    )
+
+
+def make_requests_session(user: str, pw: str) -> requests.Session:
+    s = requests.Session()
+    s.auth = HTTPBasicAuth(user, pw)
+    s.headers.update({
+        "Accept": "application/fhir+json",
+        "User-Agent": "loinc-lookup/2.1 (+local usage)"
+    })
+    return s
+
+
+def http_get_json(session: requests.Session, url: str, params: Optional[Dict[str, Any]] = None,
+                  max_retries: int = 3, sleep_base: float = 0.5) -> Dict[str, Any]:
+    """
+    Robust GET wrapper with controlled retries.
+
+    Notes
+    -----
+    - 401 → clear error with curl hint
+    - 429/5xx → exponential backoff
+    - else → raise for status, return JSON
+    """
+    attempt = 0
+    while True:
+        resp = session.get(url, params=params, timeout=60)
+        if resp.status_code == 401:
+            raise RuntimeError(
+                "401 Unauthorized from LOINC FHIR.\n"
+                "Check username/password; quick test:\n"
+                "  curl -u '<user>' 'https://fhir.loinc.org/CodeSystem?url=http://loinc.org&_format=json'"
+            )
+        if resp.status_code in (429, 502, 503, 504):
+            attempt += 1
+            if attempt > max_retries:
+                resp.raise_for_status()
+            retry_after = resp.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    sleep_s = float(retry_after)
+                except ValueError:
+                    sleep_s = sleep_base * (2 ** (attempt - 1))
+            else:
+                sleep_s = sleep_base * (2 ** (attempt - 1))
+            time.sleep(sleep_s)
+            continue
+        resp.raise_for_status()
+        return resp.json()
+
+
+def assert_auth_ok(session: requests.Session) -> None:
+    _ = http_get_json(session, f"{FHIR_BASE}/CodeSystem",
+                      params={"url": "http://loinc.org", "_format": "json"})

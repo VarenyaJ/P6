@@ -1633,3 +1633,196 @@ def _all_candidates_rows(
             }
         )
     return all_candidates
+
+
+# ----------------------------
+# Strict/relaxed strategy helpers
+# ----------------------------
+
+
+def _allowances_from_term(user_term: str) -> Tuple[bool, bool]:
+    """Derive allowances (derived, percentile) directly from the text term.
+
+    Rules
+    -----
+    - If term contains ``estimated`` or ``efw`` → allow derived.
+    - If term contains ``percentile`` → allow percentile.
+
+    Parameters
+    ----------
+    user_term : str
+        Original term.
+
+    Returns
+    -------
+    (bool, bool)
+        ``(allow_derived, allow_percentile)``.
+    """
+    lu = user_term.lower()
+    allow_derived = (
+        ("estimated" in lu) or ("efw" in lu) or ("estimated fetal weight" in lu)
+    )
+    allow_percentile = "percentile" in lu
+    return allow_derived, allow_percentile
+
+
+def _strict_then_relaxed(
+    enriched: List[Dict[str, Any]],
+    user_term: str,
+    normalized: str,
+    numeric_expected: bool,
+    expected_props: Optional[Set[str]],
+    top_k: int,
+    allow_derived: bool,
+    allow_percentile: bool,
+) -> List[Dict[str, Any]]:
+    """Pick top-``k`` with a strict pass, then fill remaining slots from a relaxed pass.
+
+    Parameters
+    ----------
+    enriched : list of dict
+        Enriched candidates.
+    user_term : str
+        Original term.
+    normalized : str
+        Normalized term.
+    numeric_expected : bool
+        Whether numeric is expected.
+    expected_props : set of str or None
+        Expected PROPERTY values.
+    top_k : int
+        Number of rows to return.
+    allow_derived : bool
+        Allow derived in strict mode.
+    allow_percentile : bool
+        Allow percentile in strict mode.
+
+    Returns
+    -------
+    list of dict
+        Up to ``top_k`` ranked candidates.
+    """
+    chosen = filter_and_rank(
+        enriched,
+        user_term,
+        normalized,
+        numeric_expected=numeric_expected,
+        expected_props=expected_props,
+        strict=True,
+        allow_derived=allow_derived,
+        allow_percentile=allow_percentile,
+    )[:top_k]
+
+    if len(chosen) < top_k:
+        relaxed_ranked = filter_and_rank(
+            enriched,
+            user_term,
+            normalized,
+            numeric_expected=numeric_expected,
+            expected_props=expected_props,
+            strict=False,
+            allow_derived=True,
+            allow_percentile=True,
+        )
+        have = {c["code"] for c in chosen}
+        for row in relaxed_ranked:
+            if len(chosen) >= top_k:
+                break
+            if row["code"] not in have:
+                chosen.append(row)
+    return chosen
+
+
+# ----------------------------
+# Term processing
+# ----------------------------
+
+
+def process_one_term(
+    session: requests.Session,
+    user_term: str,
+    count_per_variant: int,
+    top_k: int,
+    sleep_between_lookups: float,
+) -> Dict[str, Any]:
+    """Full pipeline for a single term: normalize → variants → expand → lookup → rank.
+
+    Parameters
+    ----------
+    session : requests.Session
+        Authenticated LOINC FHIR session.
+    user_term : str
+        Free-text term to map to LOINC.
+    count_per_variant : int
+        Server-side ``$expand`` count hint per variant.
+    top_k : int
+        Number of results to keep for the 'best' table.
+    sleep_between_lookups : float
+        Pacing delay between ``$lookup`` requests (seconds).
+
+    Returns
+    -------
+    dict
+        ``{"best_rows": [...], "all_candidates": [...], "normalized": "..."}``
+    """
+    normalized = normalize_user_term(user_term)
+    variants = build_text_variants(user_term, normalized)
+    numeric_expected = user_term_implies_numeric(user_term, normalized)
+    expected_props = expected_properties_for_intent(user_term, normalized)
+    allow_derived, allow_percentile = _allowances_from_term(user_term)
+
+    per_variant_cap = min(count_per_variant, max(200, top_k * 8))
+
+    raw_candidates = gather_raw_candidates(
+        session=session,
+        variants=variants,
+        count_per_variant=count_per_variant,
+        per_variant_cap=per_variant_cap,
+    )
+
+    if not raw_candidates:
+        return {
+            "best_rows": [
+                _empty_best_row(user_term, normalized, "No candidates returned")
+            ],
+            "all_candidates": [],
+            "normalized": normalized,
+        }
+
+    enriched = enrich_candidates(session, raw_candidates, sleep_between_lookups)
+
+    chosen = _strict_then_relaxed(
+        enriched=enriched,
+        user_term=user_term,
+        normalized=normalized,
+        numeric_expected=numeric_expected,
+        expected_props=expected_props,
+        top_k=top_k,
+        allow_derived=allow_derived,
+        allow_percentile=allow_percentile,
+    )
+
+    best_rows = _best_rows_from_ranked(chosen, user_term, normalized)
+    if not best_rows:
+        best_rows = [
+            _empty_best_row(
+                user_term, normalized, "No acceptable matches after filtering"
+            )
+        ]
+
+    all_candidates = _all_candidates_rows(
+        enriched=enriched,
+        user_term=user_term,
+        normalized=normalized,
+        numeric_expected=numeric_expected,
+        expected_props=expected_props,
+        allow_derived=allow_derived,
+        allow_percentile=allow_percentile,
+    )
+
+    return {
+        "best_rows": best_rows,
+        "all_candidates": all_candidates,
+        "normalized": normalized,
+    }
+

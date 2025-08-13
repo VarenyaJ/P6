@@ -828,3 +828,78 @@ def _merge_property_param(out: Dict[str, Any], prop_param: Dict[str, Any]) -> No
             )
     if prop_code and prop_value is not None:
         out.setdefault("properties", {})[prop_code] = prop_value
+
+
+def _parse_lookup_parameters(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Parse the CodeSystem/$lookup ``parameter`` array into a flat dict.
+
+    Extracted fields
+    ----------------
+    - Top-level strings: ``display``, ``version``, ``status``, ``abstract``, ``definition``
+    - Collapsed LOINC properties under ``properties`` as ``{code: value}``
+
+    Parameters
+    ----------
+    data : dict
+        Raw Parameters resource returned by ``$lookup``.
+
+    Returns
+    -------
+    dict
+        Dictionary with flattened top-level keys and a ``properties`` sub-dict.
+
+    Notes
+    -----
+    - This version is factored to keep cyclomatic complexity low (ruff C901),
+      while preserving prior behavior and output shape.
+    """
+    out: Dict[str, Any] = {}
+    keymap = {
+        "name": "display",  # Some servers send "name" instead of "display"
+        "display": "display",
+        "version": "version",
+        "status": "status",
+        "abstract": "abstract",
+        "definition": "definition",
+    }
+
+    for p in data.get("parameter") or []:
+        name = p.get("name")
+        if name == "property":
+            _merge_property_param(out, p)
+            continue
+
+        target = keymap.get(name)
+        if target:
+            val = p.get("valueString") or p.get("valueCode") or p.get("valueUri")
+            if val is not None:
+                out[target] = val
+
+    return out
+
+
+def lookup_loinc_details(session: requests.Session, code: str) -> Dict[str, Any]:
+    """Call `$lookup` for a LOINC code and return a flattened detail dict.
+
+    Parameters
+    ----------
+    session : requests.Session
+        Authenticated session.
+    code : str
+        LOINC code (e.g., ``"11824-6"``).
+
+    Returns
+    -------
+    dict
+        Flattened detail dictionary including select properties.
+
+    Raises
+    ------
+    requests.HTTPError
+        If the LOINC server returns a non-OK response.
+    """
+    params = {"system": "http://loinc.org", "code": code, "_format": "json"}
+    data = http_get_json(session, f"{FHIR_BASE}/CodeSystem/$lookup", params)
+    out: Dict[str, Any] = {"code": code}
+    out.update(_parse_lookup_parameters(data))
+    return out

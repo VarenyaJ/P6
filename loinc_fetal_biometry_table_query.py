@@ -167,3 +167,26 @@ def configure_logging(debug: bool) -> None:
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
 
+
+
+def validate_paths(loinc_csv_path: Path, excel_path: Path) -> None:
+    """
+    Validate input file paths.
+
+    Parameters
+    ----------
+    loinc_csv_path : Path
+        Path to the `LoincTableCore.csv`.
+    excel_path : Path
+        Path to the Excel workbook.
+
+    Raises
+    ------
+    FileNotFoundError
+        If either path does not exist.
+    """
+    if not loinc_csv_path.exists():
+        raise FileNotFoundError(f"LOINC CSV not found: {loinc_csv_path}")
+    if not excel_path.exists():
+        raise FileNotFoundError(f"Excel file not found: {excel_path}")
+

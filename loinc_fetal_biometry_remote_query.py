@@ -347,3 +347,95 @@ def assert_auth_ok(session: requests.Session) -> None:
         f"{FHIR_BASE}/CodeSystem",
         params={"url": "http://loinc.org", "_format": "json"},
     )
+
+# ----------------------------
+# Query normalization
+# ----------------------------
+
+
+def strip_units(user_term: str) -> str:
+    """Remove trailing unit hints like ``'(cm)'`` from a term, if present.
+
+    Parameters
+    ----------
+    user_term : str
+        Original input term.
+
+    Returns
+    -------
+    str
+        Term without any trailing ``'( ... )'`` unit hint.
+    """
+    t = user_term.strip()
+    if "(" in t and ")" in t and t.index("(") < t.index(")"):
+        return t[: t.index("(")].strip()
+    return t
+
+
+def normalize_user_term(user_term: str) -> str:
+    """Normalize a user term (expand common abbreviations, ratios).
+
+    Examples
+    --------
+    >>> normalize_user_term("HC (cm)")
+    'head circumference'
+    >>> normalize_user_term("FL/AC")
+    'femur length ratio abdominal circumference'
+
+    Parameters
+    ----------
+    user_term : str
+        Input term, e.g., ``"HC (cm)"``, ``"FL/AC"``, ``"EFW (g)"``.
+
+    Returns
+    -------
+    str
+        Normalized canonical phrase used to seed search variants.
+    """
+    base = strip_units(user_term)
+    upper_no_space = base.upper().replace(" ", "")
+    for abbr, words in ABBREV_TO_WORDS.items():
+        if upper_no_space == abbr or base.upper() == abbr:
+            return words
+    if "/" in base:
+        a, b = [p.strip() for p in base.split("/", 1)]
+        a = ABBREV_TO_WORDS.get(a.upper(), a)
+        b = ABBREV_TO_WORDS.get(b.upper(), b)
+        return f"{a} ratio {b}"
+    return base
+
+
+def user_term_implies_numeric(user_term: str, normalized: str) -> bool:
+    """Heuristic: does the term imply a numeric (Qn) quantity?
+
+    Signals
+    -------
+    - Explicit units like ``(cm)``, ``(mm)``, ``(g)``, ``(bpm)``.
+    - Words such as *length*, *diameter*, *circumference*, *weight*, *mass*, *rate*.
+
+    Parameters
+    ----------
+    user_term : str
+        Original user-provided term.
+    normalized : str
+        Normalized representation.
+
+    Returns
+    -------
+    bool
+        ``True`` if numeric is likely; otherwise ``False``.
+    """
+    t = f"{user_term} {normalized}".lower()
+    if any(u in user_term.lower() for u in ["(cm)", "(mm)", "(g)", "(bpm)"]):
+        return True
+    for k in ["length", "diameter", "circumference", "weight", "mass", "rate"]:
+        if k in t:
+            return True
+    return False
+
+
+def is_ratio_intent(user_term: str, normalized: str) -> bool:
+    """Return True if the term likely represents a ratio (e.g., HC/AC)."""
+    return (" ratio " in f"{user_term} {normalized}".lower()) or (
+        "/" in strip_units(user_term)
+    )

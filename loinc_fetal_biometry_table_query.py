@@ -94,3 +94,62 @@ OB_SYSTEM_KEYWORDS: Sequence[str] = [
     "cervix",
     "umbilical",
 ]
+
+
+def parse_cli_args() -> argparse.Namespace:
+    """
+    Parse command-line arguments.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description=(
+            "Search local LOINC for codes related to fetal biometry headers "
+            "(OB ultrasound–focused)."
+        )
+    )
+    parser.add_argument(
+        "--loinc-csv",
+        required=True,
+        help=(
+            "Path to LoincTableCore.csv "
+            "(e.g., /Users/you/Downloads/Loinc_2.80/LoincTableCore.csv)"
+        ),
+    )
+    parser.add_argument(
+        "--excel",
+        required=True,
+        help="Path to the Excel workbook containing the fetal biometry sheet.",
+    )
+    parser.add_argument(
+        "--sheet",
+        default="fetal_biometry",
+        help="Sheet name that contains fetal biometry headers (default: fetal_biometry).",
+    )
+    parser.add_argument(
+        "--out",
+        default="fetal_biometry_loinc_matches.filtered.csv",
+        help="Output CSV path (default: fetal_biometry_loinc_matches.filtered.csv).",
+    )
+    parser.add_argument(
+        "--max-per-header",
+        type=int,
+        default=50,
+        help="Maximum rows to keep per header after scoring (default: 50).",
+    )
+    parser.add_argument(
+        "--no-context-filter",
+        dest="no_context_filter",
+        action="store_true",
+        help="Disable fetal/OB context filter (not recommended).",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Log per-header diagnostics (raw/filtered/kept counts) at DEBUG level.",
+    )
+    return parser.parse_args()
+

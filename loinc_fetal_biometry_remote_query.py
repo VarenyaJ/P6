@@ -2023,3 +2023,99 @@ def run(
 
     return all_best_rows, all_all_candidates
 
+
+
+# ----------------------------
+# CLI
+# ----------------------------
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the LOINC lookup tool.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed arguments from the command line.
+    """
+    p = argparse.ArgumentParser(
+        description="Look up LOINC codes/labels/definitions via the official LOINC FHIR Terminology Service."
+    )
+    p.add_argument(
+        "terms",
+        nargs="*",
+        help="Search terms. If omitted, uses an obstetric ultrasound default list.",
+    )
+    p.add_argument(
+        "--out",
+        default="loinc_lookup_results.csv",
+        help="Output CSV path for top-k results (default: loinc_lookup_results.csv)",
+    )
+    p.add_argument(
+        "--count",
+        type=int,
+        default=50,
+        help="Server-side candidate count per text variant for $expand (default: 50)",
+    )
+    p.add_argument(
+        "--top-k",
+        type=int,
+        default=5,
+        help="How many top matches to keep per term (default: 5)",
+    )
+    p.add_argument(
+        "--sleep",
+        type=float,
+        default=DEFAULT_SLEEP_SEC,
+        help=f"Seconds to sleep between $lookup calls (default: {DEFAULT_SLEEP_SEC})",
+    )
+    p.add_argument(
+        "--creds",
+        default=None,
+        help="Path to creds file (two lines: username, password). If omitted, uses env or ./loinc_creds.txt",
+    )
+    p.add_argument(
+        "--save-all-candidates",
+        action="store_true",
+        help="Also save a CSV with ALL enriched candidates and their flags/scores (audit trail).",
+    )
+    p.add_argument(
+        "--all-out",
+        default="loinc_lookup_all_candidates.csv",
+        help="Output CSV path for ALL enriched candidates (default: loinc_lookup_all_candidates.csv)",
+    )
+    return p.parse_args()
+
+
+def main() -> None:
+    """Entrypoint for CLI execution.
+
+    Environment
+    -----------
+    Set ``LOGLEVEL`` (e.g., ``DEBUG``, ``INFO``, ``WARNING``) to control verbosity.
+
+    Side Effects
+    ------------
+    Parses CLI args, runs the pipeline, writes CSV(s), and logs a preview.
+    """
+    # Default to INFO; allow override via LOGLEVEL env.
+    log_level = os.environ.get("LOGLEVEL", "INFO").upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO), format="%(message)s"
+    )
+    args = parse_args()
+    terms = args.terms if args.terms else DEFAULT_TERMS
+    run(
+        terms=terms,
+        out_csv=args.out,
+        count_per_variant=args.count,
+        top_k=args.top_k,
+        sleep_sec=args.sleep,
+        creds_path=args.creds,
+        save_all_candidates=args.save_all_candidates,
+        all_candidates_out=args.all_out,
+    )
+
+
+if __name__ == "__main__":
+    main()

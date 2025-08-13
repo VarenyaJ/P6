@@ -1,0 +1,860 @@
+[
+  {
+    "fetal_descriptors": ["FHR"],
+    "loinc_code": "11948-7",
+    "name": "Fetal Heart rate US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Heart rate",
+      "property": "NRat",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "short_name": "Fet Heart rate US.meas",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Observation", "example_ucum_units": "{beats}/min", "example_unit": "beats/min" }
+  },
+  {
+    "fetal_descriptors": ["FHR"],
+    "loinc_code": "12124-4",
+    "name": "Fetal Heart rate",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Heart rate",
+      "property": "NRat",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "",
+    "short_name": "Fet Heart rate",
+    "basic_attributes": { "class": "H&P.HX", "type": "2 Clinical", "example_ucum_units": "{beats}/min" }
+  },
+  {
+    "fetal_descriptors": ["FHR"],
+    "loinc_code": "89692-8",
+    "name": "Heart rate 10 minutes mean Fetus",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Heart rate",
+      "property": "NRat",
+      "time": "10M^mean",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "",
+    "short_name": "Fet 10M Mean Heart rate",
+    "basic_attributes": { "class": "HRTRATE.MOLEC", "type": "2 Clinical", "order_vs_observation": "Both", "example_ucum_units": "{beats}/min", "example_unit": "beats/min" },
+    "history_usage": { "last_updated": "2.65", "last_change_type": "ADD" }
+  },
+
+  {
+    "fetal_descriptors": ["BPD"],
+    "loinc_code": "12132-7",
+    "name": "Fetal Head Diameter.biparietal [Length] max US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Length.max",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Head.diameter.biparietal^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Observation", "example_ucum_units": "mm", "example_unit": "mm" }
+  },
+  {
+    "fetal_descriptors": ["BPD"],
+    "loinc_code": "12116-0",
+    "name": "Fetal Head Diameter.biparietal outer to inner US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Diameter.biparietal outer to inner",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Head^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Observation", "example_ucum_units": "mm", "example_unit": "mm" }
+  },
+  {
+    "fetal_descriptors": ["BPD"],
+    "loinc_code": "12117-8",
+    "name": "Fetal Head Diameter.biparietal outer to outer US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Diameter.biparietal outer to outer",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Head^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Observation", "example_ucum_units": "mm", "example_unit": "mm" }
+  },
+  {
+    "fetal_descriptors": ["BPD"],
+    "loinc_code": "95940-3",
+    "name": "Fetal Head Diameter.biparietal percentile per estimated gestational age",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Diameter.biparietal",
+      "property": "Prctl",
+      "time": "Pt",
+      "system": "Head^Fetus",
+      "scale": "Qn"
+    },
+    "method": "Per estimated gestational age",
+    "short_name": "Fet BPD US Prctl per est GA",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "%", "example_unit": "%" }
+  },
+
+  {
+    "fetal_descriptors": ["HC"],
+    "loinc_code": "11984-2",
+    "name": "Fetal Head Circumference US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Perimeter",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Head^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["HC"],
+    "loinc_code": "11985-9",
+    "name": "Fetal Head Circumference measured by ellipse overlay (US)",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Perimeter",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Head^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured.ellipse overlay",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["HC"],
+    "loinc_code": "11982-6",
+    "name": "Fetal Head Circumference derived from OFD and outer-outer transaxial diameter (US)",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Perimeter",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Head^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.derived from OFD&O-O TD",
+    "short_name": "Fet Head Circum by OFD+O-O TD",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "cm", "example_unit": "cm" }
+  },
+  {
+    "fetal_descriptors": ["HC"],
+    "loinc_code": "33173-6",
+    "name": "Fetal Head Circumference estimated from gestational age by Hadlock 1984 (US)",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Perimeter",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Head^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.estimated from Hadlock 1984",
+    "short_name": "Fet Head Circum from GA.Hadlock 1984",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Observation", "example_ucum_units": "mm" }
+  },
+
+  {
+    "fetal_descriptors": ["AC"],
+    "loinc_code": "11979-2",
+    "name": "Fetal Abdomen Circumference US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Perimeter",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Abdomen^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "short_name": "Fet Abd Circum US.meas",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "cm" }
+  },
+  {
+    "fetal_descriptors": ["AC"],
+    "loinc_code": "33146-2",
+    "name": "Fetal Abdomen Circumference estimated from gestational age by Hadlock 1984 (US)",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Perimeter",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Abdomen^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.estimated from Hadlock 1984",
+    "short_name": "Fet Abd Circum from GA.Hadlock 1984",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "mm", "example_unit": "mm" }
+  },
+  {
+    "fetal_descriptors": ["AC"],
+    "loinc_code": "33145-4",
+    "name": "Fetal Abdomen Circumference estimated from gestational age by ASUM 2000 (US)",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Perimeter",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Abdomen^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.estimated from ASUM 2000",
+    "short_name": "Fet Abd Circum from GA.ASUM00",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "mm" }
+  },
+
+  {
+    "fetal_descriptors": ["Femur", "FL/AC", "FL/BPD"],
+    "loinc_code": "11963-6",
+    "name": "Fetal Femur diaphysis [Length] US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Long axis",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Femur.diaphysis^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "short_name": "Fet Femur Length US.meas",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "cm" }
+  },
+  {
+    "fetal_descriptors": ["Femur"],
+    "loinc_code": "33166-0",
+    "name": "Fetal Femur diaphysis [Length] estimated from gestational age by Hadlock 1984 (US)",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Long axis",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Femur.diaphysis^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.estimated from Hadlock 1984",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Femur"],
+    "loinc_code": "33168-6",
+    "name": "Fetal Femur diaphysis [Length] estimated from gestational age by Jeanty 1982 (US)",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Long axis",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Femur.diaphysis^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.estimated from Jeanty 1982",
+    "short_name": "Fet Femur Length from GA.Jeanty82",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "mm", "example_unit": "mm" }
+  },
+  {
+    "fetal_descriptors": ["FL/AC"],
+    "loinc_code": "11871-1",
+    "name": "Fetal Femur length/Abdominal circumference derived by US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Femur length/Abdominal circumference",
+      "property": "LenRto",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.derived",
+    "short_name": "Fet FL/AC der US",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "{ratio}", "example_unit": "ratio" }
+  },
+  {
+    "fetal_descriptors": ["FL/BPD"],
+    "loinc_code": "11872-9",
+    "name": "Fetal Femur length/Biparietal diameter derived by US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Femur length/Biparietal diameter",
+      "property": "LenRto",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.derived",
+    "short_name": "Fet FL/BDP der US",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "{ratio}", "example_unit": "ratio" }
+  },
+
+  {
+    "fetal_descriptors": ["Humerus"],
+    "loinc_code": "11966-9",
+    "name": "Fetal Humerus diaphysis [Length] US",
+    "status": "ACTIVE",
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Radius"],
+    "loinc_code": "11967-7",
+    "name": "Fetal Radius diaphysis [Length] US",
+    "status": "ACTIVE",
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Ulna"],
+    "loinc_code": "11969-3",
+    "name": "Fetal Ulna diaphysis [Length] US",
+    "status": "ACTIVE",
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Ulna"],
+    "loinc_code": "11975-0",
+    "name": "Fetal Ulna diaphysis [Length] mean Estimated from gestational age (Merz 1987)",
+    "status": "ACTIVE",
+    "method": "US.estimated from Merz 1987",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Tibia"],
+    "loinc_code": "11968-5",
+    "name": "Fetal Tibia diaphysis [Length] US",
+    "status": "ACTIVE",
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Tibia"],
+    "loinc_code": "11974-3",
+    "name": "Fetal Tibia diaphysis [Length] mean Estimated from gestational age (Merz 1987)",
+    "status": "ACTIVE",
+    "method": "US.estimated from Merz 1987",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Fibula"],
+    "loinc_code": "11964-4",
+    "name": "Fetal Fibula diaphysis [Length] US",
+    "status": "ACTIVE",
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Fibula"],
+    "loinc_code": "11971-9",
+    "name": "Fetal Fibula diaphysis [Length] mean Estimated from gestational age (Merz 1987)",
+    "status": "ACTIVE",
+    "method": "US.estimated from Merz 1987",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["Cerebellum"],
+    "loinc_code": "11863-8",
+    "name": "Fetal Cerebellum maximum diameter US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Diameter.cerebellum.max",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Brain^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["Cisterna Magna"],
+    "loinc_code": "11860-4",
+    "name": "Fetal Cisterna magna Anteroposterior diameter US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Diameter.AP",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Cisterna magna^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Cisterna Magna"],
+    "loinc_code": "11861-2",
+    "name": "Fetal Cisterna magna AP diameter by long axis US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Diameter.AP by long axis",
+      "property": "Len",
+      "time": "Pt",
+      "system": "Cisterna magna^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.measured",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["HC/AC"],
+    "loinc_code": "12129-3",
+    "name": "Fetal Head circumference/Abdominal circumference by US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Head circumference/Abdominal circumference",
+      "property": "Rto",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US+Ratio",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["HC/AC"],
+    "loinc_code": "12128-5",
+    "name": "Head circumference/Abdominal circumference percentile US+Per gestational age",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Head circumference/Abdominal circumference",
+      "property": "Prctl",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US+Per gestational age",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "%", "example_unit": "%" }
+  },
+
+  {
+    "fetal_descriptors": ["EFW"],
+    "loinc_code": "11750-7",
+    "name": "Fetal Body weight estimated from AC and FL on US by Hadlock 1984",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Body weight",
+      "property": "Mass",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US+Estimated from AC&FL.Hadlock 1984",
+    "short_name": "EFW from AC+FL.Hadlock84",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Observation" }
+  },
+  {
+    "fetal_descriptors": ["EFW"],
+    "loinc_code": "11752-3",
+    "name": "Fetal Body weight estimated from AC and FL on US by Woo 1985",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Body weight",
+      "property": "Mass",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US+Estimated from AC&FL.Woo 1985",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["EFW"],
+    "loinc_code": "33162-9",
+    "name": "Fetal Body weight US+Estimated from Hadlock 1991",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Body weight",
+      "property": "Mass",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US+Estimated from Hadlock 1991",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["EFW"],
+    "loinc_code": "11732-5",
+    "name": "Fetal Body weight estimated from AC, BPD, FL & HC on US by Hadlock 1985",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Body weight",
+      "property": "Mass",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US+Estimated from AC&BPD&FL.Hadlock 1985",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Observation", "example_ucum_units": "g", "example_unit": "g" }
+  },
+
+  {
+    "fetal_descriptors": ["EFW Percentile"],
+    "loinc_code": "11766-3",
+    "name": "Fetal Body weight percentile Per estimated gestational age",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Body weight percentile",
+      "property": "Prctl",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "Per estimated gestational age",
+    "short_name": "Fet Bdy weight Prctl Per est GA",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "%" }
+  },
+  {
+    "fetal_descriptors": ["EFW Percentile"],
+    "loinc_code": "33190-0",
+    "name": "Fetal body weight growth percentile estimated from GA by Hadlock 1985 (US)",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Body weight growth percentile",
+      "property": "Prctl",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US.estimated from Hadlock 1985",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "example_ucum_units": "%", "example_unit": "%" }
+  },
+  {
+    "fetal_descriptors": ["EFW Percentile"],
+    "loinc_code": "80415-3",
+    "name": "Fetal Body weight growth percentile US+Estimated from Hadlock 1991",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Body weight growth percentile",
+      "property": "Prctl",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "US+Estimated from Hadlock 1991",
+    "short_name": "FWP by Hadlock91",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Both", "example_ucum_units": "%", "example_unit": "%" }
+  },
+
+  {
+    "fetal_descriptors": ["Presentation"],
+    "loinc_code": "11877-8",
+    "name": "Fetal presentation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Fetal presentation",
+      "property": "Type",
+      "time": "Pt",
+      "system": "Pelvis",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "short_name": "Fet pres US",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Presentation"],
+    "loinc_code": "18850-8",
+    "name": "Narrative Fetal presentation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Fetal presentation",
+      "property": "Type",
+      "time": "Pt",
+      "system": "Pelvis",
+      "scale": "Nar"
+    },
+    "method": "US",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["Placenta Appearance"],
+    "loinc_code": "11994-1",
+    "name": "Placenta position US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Position.placenta",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Uterus",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Placenta Appearance"],
+    "loinc_code": "11995-8",
+    "name": "Narrative Placenta position US",
+    "status": "ACTIVE",
+    "method": "US",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["Heart Abnormal"],
+    "loinc_code": "12075-8",
+    "name": "Fetal Heart chambers Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Heart.chambers^Fetus",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "short_name": "US Hrt.chambers Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Heart Abnormal"],
+    "loinc_code": "12077-4",
+    "name": "Fetal Heart great vessels Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Heart.great vessels^Fetus",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "short_name": "US Hrt.great ves Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Heart Abnormal"],
+    "loinc_code": "12086-5",
+    "name": "Fetal Heart valves Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Heart.valves^Fetus",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "short_name": "US Hrt.valves Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["Head Abnormal"],
+    "loinc_code": "12069-1",
+    "name": "Fetal Head Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Head^Fetus",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "short_name": "US Head Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Head Abnormal"],
+    "loinc_code": "12061-8",
+    "name": "Fetal Intracranial anatomy Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Head.intracranial anatomy^Fetus",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "short_name": "US Head.IC Anatomy Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["Face/Neck Abnormal"],
+    "loinc_code": "12055-0",
+    "name": "Fetal Face Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Face^Fetus",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "short_name": "US Face Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Face/Neck Abnormal"],
+    "loinc_code": "12056-8",
+    "name": "Fetal Face Narrative Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Face^Fetus",
+      "scale": "Nar"
+    },
+    "method": "US",
+    "short_name": "US Face Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Face/Neck Abnormal"],
+    "loinc_code": "53686-2",
+    "name": "Fetal Neck Narrative Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Neck^Fetus",
+      "scale": "Nar"
+    },
+    "method": "US",
+    "short_name": "US Neck Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["Spine Abnormal"],
+    "loinc_code": "12110-3",
+    "name": "Fetal Spine Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Spine^Fetus",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "short_name": "US Spine Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+  {
+    "fetal_descriptors": ["Spine Abnormal"],
+    "loinc_code": "12111-1",
+    "name": "Fetal Spine Narrative Study observation US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Study observation",
+      "property": "Find",
+      "time": "Pt",
+      "system": "Spine^Fetus",
+      "scale": "Nar"
+    },
+    "method": "US",
+    "short_name": "US Spine Fetus Study",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["Genitalia Normal"],
+    "loinc_code": "11882-8",
+    "name": "Fetal Sex US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Fetal sex",
+      "property": "Type",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Nom"
+    },
+    "method": "US",
+    "short_name": "Fet Sex US",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" },
+    "note": "Use to document sex; a separate LOINC for 'genitalia normal/abnormal' wasn't found in the provided set—narrative study observations may be used to record normal/abnormal genitalia."
+  },
+  {
+    "fetal_descriptors": ["Genitalia Normal"],
+    "loinc_code": "11883-6",
+    "name": "Fetal Narrative Sex US",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Fetal sex",
+      "property": "Type",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Nar"
+    },
+    "method": "US",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical" }
+  },
+
+  {
+    "fetal_descriptors": ["Gestational Age"],
+    "loinc_code": "12121-0",
+    "name": "Fetal Gestational age Estimated from patient reported estimated date of conception",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Gestational age",
+      "property": "Time",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "Estimated from patient reported EDC",
+    "short_name": "GA Estimated from patient reported EDC",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Both", "example_ucum_units": "d", "example_unit": "days" }
+  },
+  {
+    "fetal_descriptors": ["Gestational Age"],
+    "loinc_code": "12122-8",
+    "name": "Fetal Gestational age Estimated from conception date",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Gestational age",
+      "property": "Time",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "Estimated from conception date",
+    "short_name": "GA Est from conception date",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Observation" }
+  },
+  {
+    "fetal_descriptors": ["Gestational Age"],
+    "loinc_code": "90367-4",
+    "name": "Gestational age Estimated from physical exam",
+    "status": "ACTIVE",
+    "fully_specified_name": {
+      "component": "Gestational age",
+      "property": "Time",
+      "time": "Pt",
+      "system": "^Fetus",
+      "scale": "Qn"
+    },
+    "method": "Estimated from physical examination",
+    "short_name": "GA Est from PE",
+    "basic_attributes": { "class": "OB.US", "type": "2 Clinical", "order_vs_observation": "Observation", "example_ucum_units": "d", "example_unit": "days" }
+  }
+]

@@ -1,4 +1,54 @@
 #!/usr/bin/env python3
+"""
+loinc_lookup.py refactored to smaller functions
+
+Purpose
+-------
+Map user-facing ultrasound/OB/GYN terms to **LOINC observation codes** using
+the official LOINC FHIR Terminology Service, with strong gating, flags, and
+deterministic ranking.
+
+Notes on the refactor
+---------------------
+- Behavior preserved; functions split for readability and testability.
+- Each step of the pipeline (normalize → variants → search → enrich →
+  strict/relaxed filtering → scoring → outputs) is now a small function.
+
+Usage
+-----
+Run from the command line, for example:
+
+    # Use default obstetric ultrasound terms and write results to CSV
+    python loinc_fetal_biometry_remote_query.py
+
+    # Provide custom search terms and save "all candidates" audit trail
+    python loinc_fetal_biometry_remote_query.py "HC (cm)" "FL/AC" --top-k 3 --save-all-candidates
+
+    # Use an explicit credentials file (two lines: username, password)
+    python loinc_fetal_biometry_remote_query.py --creds loinc_creds.txt
+
+    # Tweak recall and pacing
+    python loinc_fetal_biometry_remote_query.py "EFW (g)" --count 100 --sleep 0.1
+
+Authentication (priority order)
+-------------------------------
+1) `--creds /path/to/file` (two lines: username, password)   [recommended]
+2) Environment variables: `LOINC_USER` and `LOINC_PASS`
+3) Local file `./loinc_creds.txt` (two lines: username, password)
+
+Outputs
+-------
+1) Console preview (via logging): best pick per term (+ caveat banner if derived/percentile/etc.)
+2) CSV (default `loinc_lookup_results.csv`): the **top-k** per term with rich flags
+3) OPTIONAL CSV of **all enriched candidates** per term: `--save-all-candidates`
+   (default path `loinc_lookup_all_candidates.csv` unless overridden)
+
+Notes
+-----
+- This should not hard-limit to prenatal/fetal, but we **softly prefer** fetal/US context.
+- If the “best” match is methodized/derived/percentile or not Qn for numeric terms,
+  the preview logs a **WARNING** and the CSV flags it, so reviewers don't miss it.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +68,7 @@ try:
 except ImportError:
     pd = None
 
+
 # ----------------------------
 # FHIR server configuration
 # ----------------------------
@@ -30,6 +81,7 @@ DEFAULT_SLEEP_SEC = 0.2  # politeness throttle between $lookup calls
 # Recall & breadth controls
 DEFAULT_MAX_VARIANT_RESULTS = 200  # per-variant trim cap after lightweight scoring
 GLOBAL_CANDIDATE_CAP = 1200  # guardrail across variants
+
 
 # ----------------------------
 # Synonyms and expectations
@@ -124,6 +176,7 @@ DEFAULT_TERMS = [
     "Spine Abnormal",
     "Genitalia Normal",
 ]
+
 
 # ----------------------------
 # Credentials & HTTP
@@ -347,6 +400,7 @@ def assert_auth_ok(session: requests.Session) -> None:
         f"{FHIR_BASE}/CodeSystem",
         params={"url": "http://loinc.org", "_format": "json"},
     )
+
 
 # ----------------------------
 # Query normalization
@@ -2022,7 +2076,6 @@ def run(
             logging.info("No 'all candidates' to save (none enriched).")
 
     return all_best_rows, all_all_candidates
-
 
 
 # ----------------------------

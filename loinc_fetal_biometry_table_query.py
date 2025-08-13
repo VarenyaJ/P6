@@ -384,3 +384,73 @@ def row_has_ob_fetal_context(row: pd.Series) -> bool:
         or system_mentions_fetus
     )
 
+
+
+def score_candidate_row(
+    row: pd.Series,
+    header_terms_lower: Set[str],
+    allowed_properties: Set[str],
+) -> int:
+    """
+    Assign a relevance score to a candidate LOINC row.
+
+    Higher scores reflect stronger fetal/OB context and closer relation to the header.
+
+    Scoring signals
+    ---------------
+    +3 if SYSTEM contains 'fetus'
+    +3 if any of COMPONENT/LONG_COMMON_NAME/SHORTNAME contains 'fetal'
+    +2 if CLASS is OB.US or PANEL.OB.US
+    +2 if METHOD_TYP contains 'US'
+    +2 per appearance of any header term in COMPONENT/LONG_COMMON_NAME/SHORTNAME
+    +1 if PROPERTY matches a header-specific hint (e.g., Len/Mass/NRat)
+
+    Parameters
+    ----------
+    row : pandas.Series
+        The LOINC row being scored.
+    header_terms_lower : set of str
+        Header-derived terms, all lowercased.
+    allowed_properties : set of str
+        PROPERTY values considered especially relevant for this header.
+
+    Returns
+    -------
+    int
+        The computed score (non-negative).
+    """
+    score = 0
+
+    component_text = (row.get("COMPONENT") or "").lower()
+    long_name_text = (row.get("LONG_COMMON_NAME") or "").lower()
+    short_name_text = (row.get("SHORTNAME") or "").lower()
+    system_text = (row.get("SYSTEM") or "").lower()
+    loinc_class = (row.get("CLASS") or "").upper()
+    method_text = (row.get("METHOD_TYP") or "").upper()
+    property_value = (row.get("PROPERTY") or "")
+
+    # Context signals
+    if "fetus" in system_text:
+        score += 3
+    if "fetal" in component_text or "fetal" in long_name_text or "fetal" in short_name_text:
+        score += 3
+    if loinc_class in OB_ULTRASOUND_CLASSES:
+        score += 2
+    if "US" in method_text:
+        score += 2
+
+    # Header-term presence
+    for term in header_terms_lower:
+        if (
+            f" {term} " in f" {component_text} "
+            or f" {term} " in f" {long_name_text} "
+            or f" {term} " in f" {short_name_text} "
+        ):
+            score += 2
+
+    # Property hint (if applicable)
+    if allowed_properties and property_value in allowed_properties:
+        score += 1
+
+    return score
+

@@ -1912,3 +1912,114 @@ def print_console_preview(all_best_rows: List[Dict[str, Any]]) -> None:
             "  (See CSV columns is_derived/is_percentile/scale_match/property_match/stage/score.)"
         )
     logging.info("(See CSV for all matches and properties.)")
+
+
+# ----------------------------
+# CSV writing
+# ----------------------------
+
+
+def write_csv_rows(rows: List[Dict[str, Any]], out_path: str) -> None:
+    """Write a list of dict rows to CSV.
+
+    Parameters
+    ----------
+    rows : list of dict
+        Records.
+    out_path : str
+        Destination file path.
+
+    Notes
+    -----
+    Uses pandas if available; falls back to the standard library CSV writer.
+    """
+    if not rows:
+        return
+    if pd is not None:
+        pd.DataFrame(rows).to_csv(out_path, index=False)
+    else:
+        import csv
+
+        fieldnames = list(rows[0].keys())
+        with open(out_path, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fieldnames)
+            w.writeheader()
+            w.writerows(rows)
+
+
+# ----------------------------
+# Runner
+# ----------------------------
+
+
+def run(
+    terms: List[str],
+    out_csv: str,
+    count_per_variant: int,
+    top_k: int,
+    sleep_sec: float,
+    creds_path: Optional[str],
+    save_all_candidates: bool,
+    all_candidates_out: str,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Run the full pipeline over one or more terms and write CSV outputs.
+
+    Parameters
+    ----------
+    terms : list of str
+        Search terms; if empty, uses :data:`DEFAULT_TERMS`.
+    out_csv : str
+        Path for top-k results CSV.
+    count_per_variant : int
+        ``$expand`` server-side count per variant.
+    top_k : int
+        Number of top matches to keep per term.
+    sleep_sec : float
+        Delay between ``$lookup`` calls in seconds.
+    creds_path : str or None
+        Optional credentials file (two lines).
+    save_all_candidates : bool
+        If True, write a CSV of all enriched candidates for auditing.
+    all_candidates_out : str
+        Output path for the all-candidates CSV.
+
+    Returns
+    -------
+    (list of dict, list of dict)
+        Tuple of ``(all_best_rows, all_all_candidates)``.
+    """
+    user, pw, source = resolve_credentials(creds_path)
+    logging.info("[auth] Using credentials from %s", source)
+    session = make_requests_session(user, pw)
+    try:
+        assert_auth_ok(session)
+    except (requests.HTTPError, RuntimeError) as exc:
+        logging.error("Authentication check failed: %s", exc)
+        raise
+
+    all_best_rows: List[Dict[str, Any]] = []
+    all_all_candidates: List[Dict[str, Any]] = []
+
+    for term in terms or DEFAULT_TERMS:
+        result = process_one_term(session, term, count_per_variant, top_k, sleep_sec)
+        all_best_rows.extend(result["best_rows"])
+        if save_all_candidates:
+            all_all_candidates.extend(result["all_candidates"])
+
+    print_console_preview(all_best_rows)
+
+    if all_best_rows:
+        write_csv_rows(all_best_rows, out_csv)
+        logging.info("Saved top-%d results to: %s", top_k, out_csv)
+    else:
+        logging.info("No results to save.")
+
+    if save_all_candidates:
+        if all_all_candidates:
+            write_csv_rows(all_all_candidates, all_candidates_out)
+            logging.info("Saved ALL enriched candidates to: %s", all_candidates_out)
+        else:
+            logging.info("No 'all candidates' to save (none enriched).")
+
+    return all_best_rows, all_all_candidates
+

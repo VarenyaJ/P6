@@ -903,3 +903,290 @@ def lookup_loinc_details(session: requests.Session, code: str) -> Dict[str, Any]
     out: Dict[str, Any] = {"code": code}
     out.update(_parse_lookup_parameters(data))
     return out
+
+
+# ----------------------------
+# Flags & scoring
+# ----------------------------
+
+
+def is_loinc_part(code: Optional[str]) -> bool:
+    """True if the code looks like a LOINC Part (``LP...``)."""
+    return bool(code) and code.startswith("LP")
+
+
+def is_loinc_answer_list(code: Optional[str]) -> bool:
+    """True if the code looks like a LOINC Answer List/Answer (``LA...``)."""
+    return bool(code) and code.startswith("LA")
+
+
+def is_deprecated(status: Optional[str], display: Optional[str]) -> bool:
+    """Detect deprecated records from status or display text."""
+    if status and status.upper() == "DEPRECATED":
+        return True
+    return bool(display) and "deprecated" in display.lower()
+
+
+def looks_derived_or_methodized(display: Optional[str]) -> bool:
+    """Heuristics for methodized/derived content we may want to down-rank.
+
+    Returns
+    -------
+    bool
+        ``True`` if display suggests *derived* or *methodized* content.
+    """
+    if not display:
+        return False
+    d = display.lower()
+    if "estimated from" in d:
+        return True
+    if " by " in d and " method" in d:
+        return True
+    if any(x in d for x in ["hadlock", "jeanty", "merz", "ott", "goldstein"]):
+        return True
+    if any(x in d for x in ["amniocentesis", "lmp", "menstrual period"]):
+        return True
+    return False
+
+
+def mentions_percentile(display: Optional[str]) -> bool:
+    """True if display mentions percentile."""
+    return bool(display) and "percentile" in display.lower()
+
+
+def mentions_laterality(display: Optional[str]) -> bool:
+    """True if display hints at sidedness (left/right)."""
+    if not display:
+        return False
+    d = display.lower()
+    return any(
+        w in d for w in [" left ", " right ", " left]", " right]", "left ", "right "]
+    )
+
+
+def _norm_str(x: Optional[str]) -> str:
+    """Normalize simple code/property strings for robust comparisons."""
+    return (x or "").strip()
+
+
+def compute_feature_flags(
+    details: Dict[str, Any], numeric_expected: bool, expected_props: Optional[Set[str]]
+) -> Dict[str, Any]:
+    """Compute classification flags used for filtering and scoring.
+
+    Parameters
+    ----------
+    details : dict
+        Flattened output from :func:`lookup_loinc_details`.
+    numeric_expected : bool
+        Whether the user term implies a numeric (Qn) measurement.
+    expected_props : set of str or None
+        Acceptable PROPERTY values, or ``None`` if unconstrained.
+
+    Returns
+    -------
+    dict
+        {
+          "is_part", "is_answer_list", "is_deprecated", "is_derived",
+          "is_percentile", "has_laterality", "property_match", "scale_match"
+        }
+    """
+    disp = details.get("display") or ""
+    status = details.get("status")
+    props = details.get("properties", {}) if "properties" in details else {}
+    code = details.get("code") or ""
+
+    flag_is_part = is_loinc_part(code)
+    flag_is_answer = is_loinc_answer_list(code)
+    flag_is_depr = is_deprecated(status, disp)
+    flag_is_derived = looks_derived_or_methodized(disp)
+    flag_is_percentile = mentions_percentile(disp)
+    flag_has_laterality = mentions_laterality(disp)
+
+    scale = _norm_str(props.get("SCALE_TYP"))
+    prop_kind = _norm_str(props.get("PROPERTY"))
+    expected_norm: Set[str] = {(_norm_str(p)) for p in (expected_props or set())}
+
+    prop_match = (not expected_norm) or (prop_kind in expected_norm)
+    scale_match = (not numeric_expected) or (scale.upper() == "QN")
+
+    return {
+        "is_part": flag_is_part,
+        "is_answer_list": flag_is_answer,
+        "is_deprecated": flag_is_depr,
+        "is_derived": flag_is_derived,
+        "is_percentile": flag_is_percentile,
+        "has_laterality": flag_has_laterality,
+        "property_match": prop_match,
+        "scale_match": scale_match,
+    }
+
+
+def prefilter_score_for_variant(display: str, variant_text: str) -> int:
+    """Loose pre-score for raw candidates based on text overlap and fetal/US context.
+
+    Parameters
+    ----------
+    display : str
+        Candidate display text returned by ``$expand``.
+    variant_text : str
+        The filter/variant string used to obtain the candidate.
+
+    Returns
+    -------
+    int
+        Higher is better; used only for lightweight trimming before ``$lookup``.
+    """
+    disp = (display or "").lower()
+    s = 0
+    for w in SOFT_CONTEXT_TOKENS:
+        if w in disp:
+            s += 2
+    for tok in variant_text.lower().split():
+        if tok and tok in disp:
+            s += 1
+    return s
+
+
+def _score_property_scale(
+    props: Dict[str, Any], expected_props: Optional[Set[str]], numeric_expected: bool
+) -> int:
+    """Score component for PROPERTY and SCALE_TYP alignment."""
+    s = 0
+    if expected_props and props.get("PROPERTY") in expected_props:
+        s += 12
+    if numeric_expected and props.get("SCALE_TYP") == "Qn":
+        s += 6
+    if props.get("SCALE_TYP") == "Qn":
+        s += 2
+    return s
+
+
+def _score_context(props: Dict[str, Any], disp: str) -> int:
+    """Score component for ultrasound/fetal contextual alignment."""
+    s = 0
+    cls = (props.get("CLASS") or "").lower()
+    system = (props.get("SYSTEM") or "").lower()
+    sys_core = (props.get("system-core") or "").lower()
+    super_sys = (props.get("super-system") or "").lower()
+
+    if "us" in cls or "ob" in cls or "ultrasound" in disp or " us" in disp:
+        s += 3
+    if (
+        "fetal" in disp
+        or "fetus" in disp
+        or super_sys == "fetus"
+        or "fetus" in sys_core
+        or "fetus" in system
+    ):
+        s += 2
+    return s
+
+
+def _score_penalties(
+    flags: Dict[str, Any],
+    allow_derived: bool,
+    allow_percentile: bool,
+    want_laterality: bool,
+) -> int:
+    """Score component applying penalties for derived/percentile/laterality when undesired."""
+    s = 0
+    if not allow_derived and flags["is_derived"]:
+        s -= 10
+    elif allow_derived and flags["is_derived"]:
+        s -= 4
+
+    if not allow_percentile and flags["is_percentile"]:
+        s -= 8
+    elif allow_percentile and flags["is_percentile"]:
+        s -= 2
+
+    if flags["has_laterality"] and not want_laterality:
+        s -= 3
+    return s
+
+
+def _score_misc(
+    details: Dict[str, Any],
+    disp: str,
+    normalized: str,
+    numeric_expected: bool,
+    props: Dict[str, Any],
+) -> int:
+    """Score component for narrative/ordinal penalties, token overlap, and safety nudges."""
+    s = 0
+    if numeric_expected and (
+        (props.get("SCALE_TYP") in {"Ord", "Nar"}) or "narrative" in disp
+    ):
+        s -= 4
+
+    for tok in normalized.lower().split():
+        if tok and tok in disp:
+            s += 1
+
+    code = details.get("code") or ""
+    if not code.startswith(("LP", "LA")):
+        s += 1
+    if not is_deprecated(details.get("status") or "", details.get("display")):
+        s += 1
+    return s
+
+
+def final_score(
+    details: Dict[str, Any],
+    user_term: str,
+    normalized: str,
+    flags: Dict[str, Any],
+    allow_derived: bool,
+    allow_percentile: bool,
+    numeric_expected: bool,
+    expected_props: Optional[Set[str]],
+) -> int:
+    """Compute the final ranking score for a candidate.
+
+    Scoring summary
+    ---------------
+    + PROPERTY/SCALE alignment (dominant if provided)
+    + ultrasound/fetal context
+    + token overlap with normalized term
+    + small nudge against Parts/Answers and deprecated
+    - derived/methodized unless allowed
+    - percentile unless allowed
+    - laterality when not requested
+    - narrative/ordinal when numeric expected
+
+    Parameters
+    ----------
+    details : dict
+        Candidate details from :func:`lookup_loinc_details`.
+    user_term : str
+        Original user term.
+    normalized : str
+        Normalized term.
+    flags : dict
+        Feature flags from :func:`compute_feature_flags`.
+    allow_derived : bool
+        Whether to allow derived/methodized entries.
+    allow_percentile : bool
+        Whether to allow percentile entries.
+    numeric_expected : bool
+        Whether a numeric observation is expected.
+    expected_props : set of str or None
+        Preferred PROPERTY values.
+
+    Returns
+    -------
+    int
+        Higher scores rank earlier.
+    """
+    disp = (details.get("display") or "").lower()
+    props = details.get("properties", {}) if "properties" in details else {}
+    want_laterality = any(w in user_term.lower() for w in ["left", "right"])
+
+    s = 0
+    s += _score_property_scale(props, expected_props, numeric_expected)
+    s += _score_context(props, disp)
+    s += _score_penalties(flags, allow_derived, allow_percentile, want_laterality)
+    s += _score_misc(details, disp, normalized, numeric_expected, props)
+    return s
+

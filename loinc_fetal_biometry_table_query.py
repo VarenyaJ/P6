@@ -248,3 +248,31 @@ def read_excel_headers(excel_path: Path, sheet_name: str) -> List[str]:
     df = pd.read_excel(excel_path, sheet_name=sheet_name, nrows=0)
     return list(df.columns)
 
+
+
+def normalize_header_to_term(header_text: object) -> str:
+    """
+    Normalize a column header into a search-friendly base term.
+
+    This:
+    - Converts to lowercase.
+    - Removes units or hints in parentheses (e.g., ``(cm)``).
+    - Collapses multiple spaces.
+
+    Parameters
+    ----------
+    header_text : object
+        The header name (usually a string). Non-strings return an empty string.
+
+    Returns
+    -------
+    str
+        The normalized term (possibly empty).
+    """
+    if not isinstance(header_text, str):
+        return ""
+    text = re.sub(r"\(.*?\)", "", header_text)  # remove "(...)"
+    text = re.sub(r"\s+", " ", text).strip().lower()
+    return text
+
+

@@ -732,3 +732,99 @@ def expected_properties_for_intent(
     if " ratio " in text or "/" in strip_units(user_term):
         return {"Rto"}
     return None
+
+
+# ----------------------------
+# FHIR calls
+# ----------------------------
+
+
+def _fallback_variant(text_filter: str) -> Optional[str]:
+    """Loosen a filter by removing bracketed tokens and punctuation.
+
+    Parameters
+    ----------
+    text_filter : str
+        Original filter string.
+
+    Returns
+    -------
+    str or None
+        Fallback filter string if meaningfully different; else ``None``.
+    """
+    v2 = re.sub(r"\[[^\]]+\]", "", text_filter)
+    v2 = re.sub(r"[(),.:;]", " ", v2)
+    v2 = re.sub(r"\s+", " ", v2).strip()
+    if len(v2) >= 3 and v2 != text_filter:
+        return v2
+    return None
+
+
+def expand_valueset_candidates(
+    session: requests.Session, text_filter: str, count: int
+) -> List[Dict[str, Any]]:
+    """Call `$expand` on the all-LOINC ValueSet with a text filter.
+
+    Implements a lightweight fallback if the first call returns nothing.
+
+    Parameters
+    ----------
+    session : requests.Session
+        Authenticated session.
+    text_filter : str
+        Filter string passed to ``$expand?filter=``.
+    count : int
+        Server-side count hint.
+
+    Returns
+    -------
+    list of dict
+        Raw ``contains`` entries from the ValueSet expansion (may be empty).
+    """
+    params = {
+        "url": VALUESET_ALL_LOINC,
+        "filter": text_filter,
+        "count": count,
+        "_format": "json",
+    }
+    data = http_get_json(session, f"{FHIR_BASE}/ValueSet/$expand", params)
+    contains = (data.get("expansion", {}) or {}).get("contains", []) or []
+    if not contains:
+        fb = _fallback_variant(text_filter)
+        if fb:
+            params["filter"] = fb
+            data = http_get_json(session, f"{FHIR_BASE}/ValueSet/$expand", params)
+            contains = (data.get("expansion", {}) or {}).get("contains", []) or []
+    return contains
+
+
+def _merge_property_param(out: Dict[str, Any], prop_param: Dict[str, Any]) -> None:
+    """Fold a single ``property`` parameter into ``out['properties']``.
+
+    Parameters
+    ----------
+    out : dict
+        Accumulator being built by :func:`_parse_lookup_parameters`. Will gain/extend
+        a ``properties`` sub-dict in the shape ``{<LOINC property code>: <value>}``.
+    prop_param : dict
+        One entry from the FHIR ``parameter`` array whose ``name`` is ``"property"``.
+        Its ``part`` array contains the property ``code`` and a single value in one of
+        ``valueString`` / ``valueCode`` / ``valueUri``.
+
+    Notes
+    -----
+    - Missing/partial ``part`` contents are ignored safely.
+    - No return value; this mutates ``out`` in place.
+    """
+    prop_code: Optional[str] = None
+    prop_value: Optional[str] = None
+    for sub in prop_param.get("part") or []:
+        subname = sub.get("name")
+        if subname == "code":
+            prop_code = sub.get("valueCode")
+        elif subname in ("valueString", "valueCode", "valueUri"):
+            prop_value = (
+                sub.get("valueString") or sub.get("valueCode") or sub.get("valueUri")
+            )
+    if prop_code and prop_value is not None:
+        out.setdefault("properties", {})[prop_code] = prop_value

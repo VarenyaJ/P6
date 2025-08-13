@@ -439,3 +439,238 @@ def is_ratio_intent(user_term: str, normalized: str) -> bool:
     return (" ratio " in f"{user_term} {normalized}".lower()) or (
         "/" in strip_units(user_term)
     )
+
+
+# ----------------------------
+# Variant generation
+# ----------------------------
+
+
+def _loincish_variants_for_family(user_term: str, normalized: str) -> List[str]:
+    """Family-specific seed phrases that align with LOINC display conventions.
+
+    Parameters
+    ----------
+    user_term : str
+        Original term as typed by the user.
+    normalized : str
+        Normalized term.
+
+    Returns
+    -------
+    list of str
+        Candidate phrase variants specific to certain measurement families.
+    """
+    terms: List[str] = []
+    ln = normalized.lower()
+    lu = user_term.lower()
+
+    if "biparietal diameter" in ln or "bpd" in lu:
+        terms += [
+            "Head Diameter.biparietal [Length] fetus US",
+            "Head biparietal diameter [Length] fetus US",
+            "Fetal head biparietal diameter [Length] US",
+        ]
+    if "head circumference" in ln or "hc" in lu:
+        terms += ["Head [Circumference] fetus US"]
+    if "abdominal circumference" in ln or "ac" in lu:
+        terms += [
+            "Abdomen [Circumference] fetus US",
+            "Abdominal circumference fetus US",
+        ]
+
+    for b in ["femur", "humerus", "radius", "ulna", "tibia", "fibula"]:
+        if b in ln or b in lu:
+            terms += [
+                f"{b.title()} diaphysis fetus [Length] US",
+                f"Fetal {b} length [Length] US",
+            ]
+            break
+
+    if "cerebellum" in ln:
+        terms += [
+            "Cerebellum fetus [Diameter] US",
+            "Cerebellum Diameter transverse fetus US",
+        ]
+    if "cisterna magna" in ln:
+        terms += [
+            "Cisterna magna fetus [Diameter] US",
+            "Fetal cisterna magna sagittal diameter US",
+        ]
+
+    if "estimated fetal weight" in ln or "efw" in lu:
+        terms += [
+            "Estimated fetal weight [Mass] US",
+            "Fetal body weight [Mass] US",
+            "Fetus body weight [Mass] US",
+            "EFW [Mass] US",
+        ]
+
+    if "fetal heart rate" in ln or "fhr" in lu:
+        terms += [
+            "Fetal heart rate [Rate] US",
+            "Fetal heart rate US",
+            "Fetal heart rate by auscultation",
+            "Fetal heart rate mean 10 minutes",
+            "Fetal heart rate reactivity",
+        ]
+    return terms
+
+
+def _qualitative_variants(user_term: str) -> List[str]:
+    """Qualitative presence/absence variants for common OB structures.
+
+    Parameters
+    ----------
+    user_term : str
+        Original term.
+
+    Returns
+    -------
+    list of str
+        Candidate qualitative variants if applicable, otherwise empty.
+    """
+    lu = user_term.lower()
+    qual_map = {
+        "placenta appearance": [
+            "Placenta morphology [Text] US",
+            "Placenta abnormality [Presence] fetus US",
+        ],
+        "heart abnormal": [
+            "Cardiac abnormality [Presence] fetus US",
+            "Heart anomaly [Presence] fetus US",
+        ],
+        "head abnormal": [
+            "Head abnormality [Presence] fetus US",
+            "Cranial abnormality [Presence] fetus US",
+        ],
+        "face/neck abnormal": [
+            "Face abnormality [Presence] fetus US",
+            "Neck abnormality [Presence] fetus US",
+            "Facial anomaly [Presence] fetus",
+        ],
+        "spine abnormal": [
+            "Spinal abnormality [Presence] fetus US",
+            "Spine anomaly [Presence] fetus",
+        ],
+        "genitalia normal": [
+            "Genitalia normal [Presence] fetus",
+            "Genitalia abnormality [Presence] fetus",
+        ],
+    }
+    out: List[str] = []
+    for k, variants in qual_map.items():
+        if k in lu:
+            out.extend(variants)
+    return out
+
+
+def _ratio_variants(user_term: str, normalized: str) -> List[str]:
+    """Ratio-specific variants (both literal and normalized forms).
+
+    Parameters
+    ----------
+    user_term : str
+        Raw term (e.g., ``"HC/AC"``).
+    normalized : str
+        Normalized form (e.g., ``"head circumference ratio abdominal circumference"``).
+
+    Returns
+    -------
+    list of str
+        Phrase variants for ratio expressions; empty list if not ratio intent.
+    """
+    if not is_ratio_intent(user_term, normalized):
+        return []
+    ln = normalized.lower()
+    a, b = None, None
+    if " ratio " in ln:
+        parts = ln.split(" ratio ")
+        if len(parts) == 2:
+            a, b = parts[0], parts[1]
+    else:
+        raw = [p.strip() for p in strip_units(user_term).split("/")]
+        if len(raw) == 2:
+            a = ABBREV_TO_WORDS.get(raw[0].upper(), raw[0]).lower()
+            b = ABBREV_TO_WORDS.get(raw[1].upper(), raw[1]).lower()
+    if not (a and b):
+        return []
+
+    raw_lit = strip_units(user_term)
+    return [
+        f"{a}/{b}",
+        f"{a}/{b} ratio",
+        f"{a} to {b} ratio",
+        f"ratio of {a} to {b}",
+        f"{a} divided by {b}",
+        f"{a.title()} / {b.title()} derived by US",
+        f"{a.title()} / {b.title()} derived by ultrasound",
+        raw_lit,
+        raw_lit.upper(),
+    ]
+
+
+def _inject_hard_hints(user_term: str) -> List[str]:
+    """Inject known-good hard hints for ambiguous terms.
+
+    Parameters
+    ----------
+    user_term : str
+        Original term.
+
+    Returns
+    -------
+    list of str
+        Extra curated phrases to increase recall for difficult cases.
+    """
+    key = strip_units(user_term).lower()
+    key_compact = key.replace(" ", "")
+    return HARD_HINTS.get(key, []) + HARD_HINTS.get(key_compact, [])
+
+
+def build_text_variants(user_term: str, normalized: str) -> List[str]:
+    """Build a prioritized list of text variants for server-side $expand.
+
+    Strategy
+    --------
+    - Base normalized text + ultrasound context
+    - Bracketed quantity cues (``[Length]``, ``[Diameter]``, ...)
+    - LOINC-ish family phrases (e.g., long bone diaphysis)
+    - Qualitative presence/morphology phrasing
+    - Ratio variants (literal and spelled out)
+    - Curated hard hints
+
+    Parameters
+    ----------
+    user_term : str
+        Original user-provided term.
+    normalized : str
+        Normalized representation.
+
+    Returns
+    -------
+    list of str
+        Unique variant strings (order preserved).
+    """
+    terms: List[str] = [normalized, f"{normalized} ultrasound", f"{normalized} US"]
+    terms += [
+        f"{normalized} [Length]",
+        f"{normalized} [Diameter]",
+        f"{normalized} [Circumference]",
+        f"{normalized} [Mass]",
+        f"{normalized} [Rate]",
+    ]
+    terms += _loincish_variants_for_family(user_term, normalized)
+    terms += _qualitative_variants(user_term)
+    terms += _ratio_variants(user_term, normalized)
+    terms += _inject_hard_hints(user_term)
+
+    # Deduplicate preserving order
+    seen: set = set()
+    uniq: List[str] = []
+    for t in terms:
+        if t not in seen:
+            uniq.append(t)
+            seen.add(t)
+    return uniq
+

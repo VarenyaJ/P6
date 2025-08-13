@@ -509,3 +509,95 @@ def build_search_mask(
         mask = mask | loinc_dataframe[field].str.contains(regex, case=False, na=False, regex=True)
     return mask
 
+
+
+
+def process_single_header(
+    loinc_dataframe: pd.DataFrame,
+    header: str,
+    fields_to_search: Sequence[str],
+    max_per_header: int,
+    use_context_filter: bool,
+) -> pd.DataFrame:
+    """
+    Process one header: generate terms, search, context-filter, score, and trim.
+
+    Parameters
+    ----------
+    loinc_dataframe : pandas.DataFrame
+        The full LOINC table.
+    header : str
+        Header from the Excel sheet.
+    fields_to_search : sequence of str
+        LOINC columns to search (e.g., COMPONENT, LONG_COMMON_NAME, SHORTNAME).
+    max_per_header : int
+        Maximum rows to keep after scoring (``<=0`` means keep all).
+    use_context_filter : bool
+        If True, apply OB/fetal context filtering.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Result rows for this header with the requested output columns, plus
+        a leading ``Header`` column. May be empty.
+    """
+    search_terms = collect_search_terms_for_header(header)
+    if not search_terms:
+        LOGGER.debug("[DEBUG] Header '%s': no usable search terms after normalization.", header)
+        return pd.DataFrame(columns=["Header"] + REQUESTED_OUTPUT_COLUMNS)
+
+    regex = build_search_regex(search_terms)
+    search_mask = build_search_mask(loinc_dataframe, regex, fields_to_search)
+    candidate_rows = loinc_dataframe.loc[search_mask].copy()
+
+    if candidate_rows.empty:
+        LOGGER.debug("[DEBUG] Header '%s': 0 raw matches.", header)
+        return pd.DataFrame(columns=["Header"] + REQUESTED_OUTPUT_COLUMNS)
+
+    raw_count = len(candidate_rows)
+
+    if use_context_filter:
+        context_mask = candidate_rows.apply(row_has_ob_fetal_context, axis=1)
+        candidate_rows = candidate_rows.loc[context_mask]
+
+    filtered_count = len(candidate_rows)
+    if candidate_rows.empty:
+        LOGGER.debug(
+            "[DEBUG] Header '%s': 0 matches after OB/fetal context filter.", header
+        )
+        return pd.DataFrame(columns=["Header"] + REQUESTED_OUTPUT_COLUMNS)
+
+    allowed_properties_for_header = get_property_hints_for_header(header)
+
+    # Score, sort, cap
+    header_terms_lower = {t.lower() for t in search_terms}
+    candidate_rows["__score"] = candidate_rows.apply(
+        lambda r: score_candidate_row(r, header_terms_lower, allowed_properties_for_header),
+        axis=1,
+    )
+    candidate_rows = candidate_rows.sort_values(
+        ["__score", "CLASS", "SYSTEM", "COMPONENT"],
+        ascending=[False, True, True, True],
+    )
+
+    if max_per_header and max_per_header > 0:
+        candidate_rows = candidate_rows.head(max_per_header)
+
+    kept_count = len(candidate_rows)
+
+    # Finalize columns and add the originating header
+    candidate_rows = candidate_rows.drop(columns=["__score"], errors="ignore")
+    candidate_rows.insert(0, "Header", header)
+    candidate_rows = candidate_rows[["Header"] + REQUESTED_OUTPUT_COLUMNS].drop_duplicates()
+
+    LOGGER.debug(
+        "[DEBUG] Header '%s': raw=%d, after_context=%d, kept=%d, allowed_props=%s",
+        header,
+        raw_count,
+        filtered_count,
+        kept_count,
+        sorted(allowed_properties_for_header) if allowed_properties_for_header else "none",
+    )
+
+    return candidate_rows
+

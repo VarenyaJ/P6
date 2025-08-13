@@ -190,3 +190,31 @@ def validate_paths(loinc_csv_path: Path, excel_path: Path) -> None:
     if not excel_path.exists():
         raise FileNotFoundError(f"Excel file not found: {excel_path}")
 
+
+
+
+def load_loinc_dataframe(loinc_csv_path: Path) -> pd.DataFrame:
+    """
+    Load LOINC table with consistent string dtype and required columns present.
+
+    Parameters
+    ----------
+    loinc_csv_path : Path
+        Path to the `LoincTableCore.csv`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        LOINC table with string columns and NaNs filled by empty strings.
+
+    Raises
+    ------
+    SystemExit
+        If expected columns are missing.
+    """
+    loinc_dataframe = pd.read_csv(loinc_csv_path, dtype=str, low_memory=False).fillna("")
+    missing_columns = [c for c in REQUESTED_OUTPUT_COLUMNS if c not in loinc_dataframe.columns]
+    if missing_columns:
+        raise SystemExit(f"Missing expected columns in LOINC CSV: {missing_columns}")
+    return loinc_dataframe
+

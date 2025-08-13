@@ -153,3 +153,17 @@ def parse_cli_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
+
+def configure_logging(debug: bool) -> None:
+    """
+    Configure the root logger.
+
+    Parameters
+    ----------
+    debug : bool
+        If True, sets level to DEBUG; otherwise INFO.
+    """
+    level = logging.DEBUG if debug else logging.INFO
+    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+

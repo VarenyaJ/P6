@@ -1300,3 +1300,336 @@ def filter_and_rank(
     accepted.sort(key=_sort_key_for_rank, reverse=True)
     return accepted
 
+
+# ----------------------------
+# Candidate collection & enrichment
+# ----------------------------
+
+
+def _update_raw_candidates_with_variant(
+    raw: Dict[str, Dict[str, Any]], contains: List[Dict[str, Any]], cap: int
+) -> None:
+    """Merge ``contains`` results into ``raw`` using a simple prefilter score ordering.
+
+    Parameters
+    ----------
+    raw : dict
+        Accumulator mapping code → minimal info.
+    contains : list of dict
+        Raw results from ``$expand``.
+    cap : int
+        Per-variant cap after lightweight trimming.
+    """
+    contains = sorted(
+        contains,
+        key=lambda c: prefilter_score_for_variant(
+            c.get("display", ""), c.get("display", "")
+        ),
+        reverse=True,
+    )
+    for c in contains[:cap]:
+        code = c.get("code")
+        if not code or code in raw:
+            continue
+        raw[code] = {"code": code, "display": c.get("display")}
+        if len(raw) >= GLOBAL_CANDIDATE_CAP:
+            break
+
+
+def gather_raw_candidates(
+    session: requests.Session,
+    variants: List[str],
+    count_per_variant: int,
+    per_variant_cap: int,
+) -> Dict[str, Dict[str, Any]]:
+    """Collect a de-duplicated pool of raw candidate codes via $expand across variants.
+
+    Parameters
+    ----------
+    session : requests.Session
+        Authenticated session.
+    variants : list of str
+        Text variants to pass to ``$expand``.
+    count_per_variant : int
+        Server-side candidate count hint per variant.
+    per_variant_cap : int
+        Local per-variant trim cap after prefilter scoring.
+
+    Returns
+    -------
+    dict
+        Mapping from LOINC code → minimal info from ``$expand``.
+    """
+    raw_candidates: Dict[str, Dict[str, Any]] = {}
+    for v in variants:
+        try:
+            contains = expand_valueset_candidates(session, v, count=count_per_variant)
+        except (requests.RequestException, ValueError) as exc:
+            logging.warning(
+                "Skipping variant due to request error for '%s': %s", v, exc
+            )
+            continue
+        _update_raw_candidates_with_variant(
+            raw_candidates, contains, max(DEFAULT_MAX_VARIANT_RESULTS, per_variant_cap)
+        )
+        if len(raw_candidates) >= GLOBAL_CANDIDATE_CAP:
+            break
+    return raw_candidates
+
+
+def enrich_candidates(
+    session: requests.Session,
+    raw_candidates: Dict[str, Dict[str, Any]],
+    sleep_between_lookups: float,
+) -> List[Dict[str, Any]]:
+    """Call `$lookup` for each raw candidate and collect enriched detail dicts.
+
+    Parameters
+    ----------
+    session : requests.Session
+        Authenticated session.
+    raw_candidates : dict
+        Mapping from code → minimal info (from ``$expand``).
+    sleep_between_lookups : float
+        Delay in seconds between successive ``$lookup`` calls.
+
+    Returns
+    -------
+    list of dict
+        Enriched candidate detail dicts.
+    """
+    enriched: List[Dict[str, Any]] = []
+    for code in raw_candidates:
+        time.sleep(sleep_between_lookups)
+        try:
+            d = lookup_loinc_details(session, code)
+            enriched.append(d)
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            logging.warning("Lookup failed for code %s: %s", code, exc)
+            continue
+    return enriched
+
+
+# ----------------------------
+# Row builders (CSV-ready)
+# ----------------------------
+
+
+def _empty_best_row(user_term: str, normalized: str, error: str) -> Dict[str, Any]:
+    """Build a placeholder 'best row' when no matches were accepted.
+
+    Parameters
+    ----------
+    user_term : str
+        original term
+    normalized : str
+        normalized term
+    error : str
+        error description
+
+    Returns
+    -------
+    dict
+        Row with all fields present, ``None`` where unknown, and an ``error`` message.
+    """
+    return {
+        "search_term": user_term,
+        "normalized_query": normalized,
+        "rank": None,
+        "loinc_code": None,
+        "display": None,
+        "definition": None,
+        "status": None,
+        "class": None,
+        "system": None,
+        "property": None,
+        "time": None,
+        "method": None,
+        "scale": None,
+        "example_units": None,
+        "system_core": None,
+        "super_system": None,
+        "time_core": None,
+        "time_modifier": None,
+        "analyte": None,
+        "analyte_core": None,
+        "analyte_suffix": None,
+        "analyte_numerator": None,
+        "analyte_divisor": None,
+        "analyte_divisor_suffix": None,
+        "category": None,
+        "search_terms": None,
+        "display_name": None,
+        "is_part": None,
+        "is_answer_list": None,
+        "is_deprecated": None,
+        "is_derived": None,
+        "is_percentile": None,
+        "has_laterality": None,
+        "property_match": None,
+        "scale_match": None,
+        "stage": None,
+        "score": None,
+        "error": error,
+    }
+
+
+def _best_rows_from_ranked(
+    chosen: List[Dict[str, Any]], user_term: str, normalized: str
+) -> List[Dict[str, Any]]:
+    """Convert ranked candidates into compact, CSV-ready rows.
+
+    Parameters
+    ----------
+    chosen : list of dict
+        Ranked candidates selected by strict/relaxed passes.
+    user_term : str
+        Original user term.
+    normalized : str
+        Normalized user term.
+
+    Returns
+    -------
+    list of dict
+        Rows with flattened properties, flags, stage, score, and rank.
+    """
+    best_rows: List[Dict[str, Any]] = []
+    for rank_idx, row in enumerate(chosen, start=1):
+        props = row.get("properties", {}) if row else {}
+        flags = row.get("_flags", {})
+        best_rows.append(
+            {
+                "search_term": user_term,
+                "normalized_query": normalized,
+                "rank": float(rank_idx),
+                "loinc_code": row.get("code"),
+                "display": row.get("display"),
+                "definition": row.get("definition"),
+                "status": row.get("status"),
+                "class": props.get("CLASS"),
+                "system": props.get("SYSTEM"),
+                "property": props.get("PROPERTY"),
+                "time": props.get("TIME_ASPCT"),
+                "method": props.get("METHOD_TYP"),
+                "scale": props.get("SCALE_TYP"),
+                "example_units": props.get("EXAMPLE_UCUM_UNITS"),
+                "system_core": props.get("system-core"),
+                "super_system": props.get("super-system"),
+                "time_core": props.get("time-core"),
+                "time_modifier": props.get("time-modifier"),
+                "analyte": props.get("analyte"),
+                "analyte_core": props.get("analyte-core"),
+                "analyte_suffix": props.get("analyte-suffix"),
+                "analyte_numerator": props.get("analyte-numerator"),
+                "analyte_divisor": props.get("analyte-divisor"),
+                "analyte_divisor_suffix": props.get("analyte-divisor-suffix"),
+                "category": props.get("category"),
+                "search_terms": props.get("search"),
+                "display_name": props.get("DisplayName"),
+                "is_part": flags.get("is_part"),
+                "is_answer_list": flags.get("is_answer_list"),
+                "is_deprecated": flags.get("is_deprecated"),
+                "is_derived": flags.get("is_derived"),
+                "is_percentile": flags.get("is_percentile"),
+                "has_laterality": flags.get("has_laterality"),
+                "property_match": flags.get("property_match"),
+                "scale_match": flags.get("scale_match"),
+                "stage": row.get("_stage"),
+                "score": row.get("_score"),
+                "error": None,
+            }
+        )
+    return best_rows
+
+
+def _all_candidates_rows(
+    enriched: List[Dict[str, Any]],
+    user_term: str,
+    normalized: str,
+    numeric_expected: bool,
+    expected_props: Optional[Set[str]],
+    allow_derived: bool,
+    allow_percentile: bool,
+) -> List[Dict[str, Any]]:
+    """Emit verbose rows for *all* enriched candidates (audit trail).
+
+    Parameters
+    ----------
+    enriched : list of dict
+        Enriched candidates.
+    user_term : str
+        Original term.
+    normalized : str
+        Normalized term.
+    numeric_expected : bool
+        Whether numeric is expected.
+    expected_props : set of str or None
+        Expected PROPERTY values.
+    allow_derived : bool
+        Whether derived entries are allowed in strict scoring.
+    allow_percentile : bool
+        Whether percentile entries are allowed in strict scoring.
+
+    Returns
+    -------
+    list of dict
+        Verbose rows including strict and relaxed scores.
+    """
+    all_candidates: List[Dict[str, Any]] = []
+    for d in enriched:
+        flags = compute_feature_flags(d, numeric_expected, expected_props)
+        score_strict = final_score(
+            d,
+            user_term,
+            normalized,
+            flags,
+            allow_derived,
+            allow_percentile,
+            numeric_expected,
+            expected_props,
+        )
+        score_relaxed = final_score(
+            d, user_term, normalized, flags, True, True, False, expected_props
+        )
+        props = d.get("properties", {}) if d else {}
+        all_candidates.append(
+            {
+                "search_term": user_term,
+                "normalized_query": normalized,
+                "loinc_code": d.get("code"),
+                "display": d.get("display"),
+                "status": d.get("status"),
+                "definition": d.get("definition"),
+                "class": props.get("CLASS"),
+                "system": props.get("SYSTEM"),
+                "property": props.get("PROPERTY"),
+                "time": props.get("TIME_ASPCT"),
+                "method": props.get("METHOD_TYP"),
+                "scale": props.get("SCALE_TYP"),
+                "example_units": props.get("EXAMPLE_UCUM_UNITS"),
+                "system_core": props.get("system-core"),
+                "super_system": props.get("super-system"),
+                "time_core": props.get("time-core"),
+                "time_modifier": props.get("time-modifier"),
+                "analyte": props.get("analyte"),
+                "analyte_core": props.get("analyte-core"),
+                "analyte_suffix": props.get("analyte-suffix"),
+                "analyte_numerator": props.get("analyte-numerator"),
+                "analyte_divisor": props.get("analyte-divisor"),
+                "analyte_divisor_suffix": props.get("analyte-divisor-suffix"),
+                "category": props.get("category"),
+                "search_terms": props.get("search"),
+                "display_name": props.get("DisplayName"),
+                "is_part": flags["is_part"],
+                "is_answer_list": flags["is_answer_list"],
+                "is_deprecated": flags["is_deprecated"],
+                "is_derived": flags["is_derived"],
+                "is_percentile": flags["is_percentile"],
+                "has_laterality": flags["has_laterality"],
+                "property_match": flags["property_match"],
+                "scale_match": flags["scale_match"],
+                "score_strict": score_strict,
+                "score_relaxed": score_relaxed,
+            }
+        )
+    return all_candidates

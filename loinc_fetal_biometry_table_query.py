@@ -480,3 +480,32 @@ def get_property_hints_for_header(header: str) -> Set[str]:
         allowed |= PROPERTY_HINTS_BY_HEADER.get(key, set())
     return allowed
 
+
+
+def build_search_mask(
+    loinc_dataframe: pd.DataFrame,
+    regex: str,
+    fields_to_search: Sequence[str],
+) -> pd.Series:
+    """
+    Build a boolean mask over the LOINC dataframe for the given regex and fields.
+
+    Parameters
+    ----------
+    loinc_dataframe : pandas.DataFrame
+        LOINC table.
+    regex : str
+        Compiled regex string to search for.
+    fields_to_search : sequence of str
+        Column names to search within.
+
+    Returns
+    -------
+    pandas.Series
+        Boolean mask aligned to ``loinc_dataframe.index``.
+    """
+    mask = pd.Series(False, index=loinc_dataframe.index)
+    for field in fields_to_search:
+        mask = mask | loinc_dataframe[field].str.contains(regex, case=False, na=False, regex=True)
+    return mask
+

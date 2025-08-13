@@ -1190,3 +1190,113 @@ def final_score(
     s += _score_misc(details, disp, normalized, numeric_expected, props)
     return s
 
+
+# ----------------------------
+# Filtering & ranking
+# ----------------------------
+
+
+def _sort_key_for_rank(x: Dict[str, Any]) -> Tuple[int, int, int, int, int]:
+    """Tie-breaker key to prefer property/scale matches and non-derived/percentile.
+
+    Returns
+    -------
+    tuple of int
+        ``(score, property_match, scale_match, not_derived, not_percentile)`` as ints.
+    """
+    f = x["_flags"]
+    sec = (
+        1 if f.get("property_match") else 0,
+        1 if f.get("scale_match") else 0,
+        0 if f.get("is_derived") else 1,
+        0 if f.get("is_percentile") else 1,
+    )
+    return (x["_score"],) + sec
+
+
+def filter_and_rank(
+    enriched: List[Dict[str, Any]],
+    user_term: str,
+    normalized: str,
+    numeric_expected: bool,
+    expected_props: Optional[Set[str]],
+    strict: bool,
+    allow_derived: bool,
+    allow_percentile: bool,
+) -> List[Dict[str, Any]]:
+    """Apply strict/relaxed filtering and compute scores, returning sorted candidates.
+
+    Strict mode
+    -----------
+    - Exclude Parts/AnswerLists/Deprecated
+    - Exclude derived unless ``allow_derived``
+    - Exclude percentile unless ``allow_percentile``
+    - If numeric expected: require ``SCALE_TYP=Qn`` and PROPERTY in expected set
+
+    Relaxed mode
+    ------------
+    - Still excludes Parts/AnswerLists/Deprecated
+    - Allows derived/percentile (penalized by score)
+    - Drops hard requirements on PROPERTY/SCALE
+
+    Parameters
+    ----------
+    enriched : list of dict
+        Enriched candidates from ``$lookup``.
+    user_term : str
+        Original user term.
+    normalized : str
+        Normalized user term.
+    numeric_expected : bool
+        Whether numeric observation is expected.
+    expected_props : set of str or None
+        Expected PROPERTY set if any.
+    strict : bool
+        Whether to apply strict gating rules.
+    allow_derived : bool
+        Allow derived/methodized entries in strict mode.
+    allow_percentile : bool
+        Allow percentile entries in strict mode.
+
+    Returns
+    -------
+    list of dict
+        Sorted candidates with ``_flags``, ``_score``, and ``_stage`` annotations.
+    """
+    accepted: List[Dict[str, Any]] = []
+    for d in enriched:
+        flags = compute_feature_flags(d, numeric_expected, expected_props)
+
+        if flags["is_part"] or flags["is_answer_list"] or flags["is_deprecated"]:
+            continue
+
+        if strict:
+            if not allow_derived and flags["is_derived"]:
+                continue
+            if not allow_percentile and flags["is_percentile"]:
+                continue
+            if numeric_expected:
+                if not flags["scale_match"]:
+                    continue
+                if expected_props and not flags["property_match"]:
+                    continue
+
+        s = final_score(
+            details=d,
+            user_term=user_term,
+            normalized=normalized,
+            flags=flags,
+            allow_derived=allow_derived,
+            allow_percentile=allow_percentile,
+            numeric_expected=numeric_expected,
+            expected_props=expected_props,
+        )
+        row = dict(d)
+        row["_flags"] = flags
+        row["_score"] = s
+        row["_stage"] = "strict" if strict else "relaxed"
+        accepted.append(row)
+
+    accepted.sort(key=_sort_key_for_rank, reverse=True)
+    return accepted
+

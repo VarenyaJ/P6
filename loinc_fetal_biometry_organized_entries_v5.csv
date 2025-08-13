@@ -1,0 +1,104 @@
+loinc_code,long_common_name,name,class,property,time,system,scale,method,example_ucum_units,status
+11615-2,Fetal Heart Activity US,Fetal Body movement US,OB.US,Find,Pt,Heart^Fetus,Nom,US,,ACTIVE
+11616-0,Fetal Heart Narrative Activity US,Fetal Body movement US^Time,OB.US,Find,Pt,Heart^Fetus,Nar,US,,ACTIVE
+11633-5,Fetal Heart rate reactivity US,Fetal Heart rate reactivity US,OB.US,Fcn,Pt,^Fetus,Ord,US,,ACTIVE
+11634-3,Fetal Biophysical profile.sum Derived,Fetal Biophysical profile.sum Derived,OB.US,Fcn,Pt,^Fetus,Ord,Derived,,ACTIVE
+11732-5,Fetal Body weight estimated from Abdominal circumference and Biparietal diameter and Femur length and Head circumference on US by Hadlock 1985 method,Fetal breathing movement US,OB.US,Mass,Pt,^Fetus,Qn,US+Estimated from AC&BPD&FL&HC.Hadlock 1985,g,ACTIVE
+11735-8,Fetal Body weight estimated from Abdominal circumference and Biparietal diameter and Femur length on US by Hadlock 1985 method,Fetal Body tone US,OB.US,Mass,Pt,^Fetus,Qn,US+Estimated from AC&BPD&FL.Hadlock 1985,g,ACTIVE
+11750-7,Fetal Body weight estimated from Abdominal circumference and Femur length on US by Hadlock 1984 method,Fetal Body weight estimated from Abdominal circumference and Femur length on US by Hadlock 1984 method,OB.US,Mass,Pt,^Fetus,Qn,US+Estimated from AC&FL.Hadlock 1984,g,ACTIVE
+11752-3,Fetal Body weight estimated from Abdominal circumference and Femur length on US by Woo 1985 method,Fetal Amniotic fluid volume US,OB.US,Mass,Pt,^Fetus,Qn,US+Estimated from AC&FL.Woo 1985,g,ACTIVE
+11766-3,Fetal Body weight percentile Per estimated gestational age,Fetal Body weight percentile Per estimated gestational age,OB.US,Prctl,Pt,^Fetus,Qn,Per estimated gestational age,%,ACTIVE
+11768-9,Fetal Body weight percentile range Categorization by comparison with standards,Fetal Skull calcification [Presence] US,OB.US,Prctl,Pt,^Fetus,Ord,Categorization by comparison with standards,,ACTIVE
+11820-8,Fetal Head Diameter.biparietal US,Fetal Head Diameter.biparietal US,OB.US,Len,Pt,Head^Fetus,Qn,US.measured,cm,ACTIVE
+11851-3,Fetal Head Diameter.occipito-frontal US,Fetal Head Diameter.occipito-frontal US,OB.US,Len,Pt,Head^Fetus,Qn,US.measured,cm,ACTIVE
+11860-4,Fetal Cisterna magna Diameter.sagittal US,Cisterna magna [Thickness] US,OB.US,Len,Pt,Cisterna magna^Fetus,Qn,US.measured,mm,ACTIVE
+11861-2,Fetal Cisterna magna Mean sagittal diameter Estimated from gestational age,Cisterna magna Thickness [Percentile] US+Per estimated gestational age,OB.US,Len,Pt,Cisterna magna^Fetus,Qn,Estimated from gestational age,mm,ACTIVE
+11863-8,Fetal Cerebellum Diameter transverse US,Fetal Cerebellum Diameter transverse US,OB.US,Len,Pt,Cerebellum^Fetus,Qn,US.measured,mm,ACTIVE
+11871-1,Fetal Femur length/Abdominal circumference derived by US,Fetal Femur length/Abdominal circumference derived by US,OB.US,LenRto,Pt,^Fetus,Qn,US.derived,{ratio},ACTIVE
+11872-9,Fetal Femur length/Biparietal diameter derived by US,Fetal Ulna [Length] US,OB.US,LenRto,Pt,^Fetus,Qn,US.derived,{ratio},ACTIVE
+11877-8,Fetal presentation US,Fetal Fibula diaphysis [Length] US,OB.US,Type,Pt,Pelvis,Nom,US,,ACTIVE
+11882-8,Fetal Sex US,Fetal Sex US,OB.US,Type,Pt,^Fetus,Nom,US,,ACTIVE
+11883-6,Fetal Narrative Sex US,Fetal Breathing movement US^Time,OB.US,Type,Pt,^Fetus,Nar,US,,ACTIVE
+11884-4,Gestational age Estimated,Gestational age Estimated,OB.US,Time,Pt,^Fetus,Qn,Clinical.estimated,wk,ACTIVE
+11885-1,Gestational age Estimated from last menstrual period,Gestational age Estimated from last menstrual period,OB.US,Time,Pt,^Fetus,Qn,Estimated from last menstrual period,wk,ACTIVE
+11886-9,Gestational age Estimated from ovulation date,Gestational age Estimated from ovulation date,OB.US,Time,Pt,^Fetus,Qn,Estimated from ovulation date,d,ACTIVE
+11888-5,Gestational age US composite estimate,Gestational age US composite estimate,OB.US,Time,Pt,^Fetus,Qn,US.composite.estimated,wk,ACTIVE
+11889-3,Gestational age estimated from Abdominal circumference on US,Gestational age estimated from Abdominal circumference on US,OB.US,Time,Pt,^Fetus,Qn,US+Estimated from AC,d,ACTIVE
+11890-1,Gestational age estimated from Abdominal circumference on US by Campbell 1975 method,Gestational age estimated from Abdominal circumference on US by Campbell 1975 method,OB.US,Time,Pt,^Fetus,Qn,US+Estimated from AC.Campbell 1975,d,ACTIVE
+11920-6,Gestational age estimated from Femur length on US by Hadlock 1984 method,Gestational age estimated from Femur length on US by Hadlock 1984 method,OB.US,Time,Pt,^Fetus,Qn,US+Estimated from FL.Hadlock 1984,d,ACTIVE
+11927-1,Gestational age estimated from Gestational sac diameter on US,Gestational age estimated from Gestational sac diameter on US,OB.US,Time,Pt,^Fetus,Qn,US+Estimated from GSD,d,ACTIVE
+11947-9,Head circumference/Abdominal circumference derived by US,Head circumference/Abdominal circumference derived by US,OB.US,LenRto,Pt,^Fetus,Qn,US.derived,{ratio},ACTIVE
+11948-7,Fetal Heart rate US,Fetal Heart rate US,OB.US,NRat,Pt,^Fetus,Qn,US.measured,{beats}/min,ACTIVE
+11963-6,Fetal Femur diaphysis [Length] US,Fetal Femur diaphysis [Length] US,OB.US,Len,Pt,Femur.diaphysis^Fetus,Qn,US.measured,cm,ACTIVE
+11964-4,Fetal Fibula diaphysis [Length] US,Fetal Fibula diaphysis [Length] US,OB.US,Len,Pt,Fibula.diaphysis^Fetus,Qn,US.measured,mm,ACTIVE
+11966-9,Fetal Humerus diaphysis [Length] US,Fetal Humerus diaphysis [Length] US,OB.US,Len,Pt,Humerus.diaphysis^Fetus,Qn,US.measured,cm,ACTIVE
+11967-7,Fetal Radius diaphysis [Length] US,Fetal Radius diaphysis [Length] US,OB.US,Len,Pt,Radius.diaphysis^Fetus,Qn,US.measured,mm,ACTIVE
+11968-5,Fetal Tibia diaphysis [Length] US,Fetal Tibia diaphysis [Length] US,OB.US,Len,Pt,Tibia.diaphysis^Fetus,Qn,US.measured,cm,ACTIVE
+11969-3,Fetal Ulna diaphysis [Length] US,Fetal Ulna diaphysis [Length] US,OB.US,Len,Pt,Ulna.diaphysis^Fetus,Qn,US.measured,cm,ACTIVE
+11971-9,Fetal Fibula diaphysis [Length] mean Estimated from gestational age.Merz. 1987,Fetal Fibula diaphysis [Length] mean Estimated from gestational age.Merz. 1987,OB.US,Len,Pt,Fibula.diaphysis^Fetus,Qn,Estimated from gestational age.Merz 1987,mm,ACTIVE
+11972-7,Fetal Humerus diaphysis [Length] mean Estimated from gestational age.Merz. 1987,Fetal Humerus diaphysis [Length] mean Estimated from gestational age.Merz. 1987,OB.US,Len,Pt,Humerus.diaphysis^Fetus,Qn,Estimated from gestational age.Merz 1987,mm,ACTIVE
+11974-3,Fetal Tibia diaphysis [Length] mean Estimated from gestational age.Merz. 1987,Fetal Tibia diaphysis [Length] mean Estimated from gestational age.Merz. 1987,OB.US,Len,Pt,Tibia.diaphysis^Fetus,Qn,Estimated from gestational age.Merz 1987,mm,ACTIVE
+11975-0,Fetal Ulna diaphysis [Length] mean Estimated from gestational age.Merz. 1987,Fetal Ulna diaphysis [Length] mean Estimated from gestational age.Merz. 1987,OB.US,Len,Pt,Ulna.diaphysis^Fetus,Qn,Estimated from gestational age.Merz 1987,mm,ACTIVE
+11979-2,Fetal Abdomen Circumference US,Fetal Abdomen Circumference US,OB.US,Len,Pt,Abdomen^Fetus,Qn,US.measured,cm,ACTIVE
+11982-6,Fetal Head Circumference derived from occipital-frontal diameter and outer-outer transaxial diameter (US),Fetal Head Circumference derived from occipital-frontal diameter and outer-outer transaxial diameter (US),OB.US,Len,Pt,Head^Fetus,Qn,US.derived from OFD&O-O TD,cm,ACTIVE
+11984-2,Fetal Head Circumference US,Fetal Head Circumference US,OB.US,Len,Pt,Head^Fetus,Qn,US.measured,cm,ACTIVE
+11985-9,Fetal Head Circumference measured by ellipse overlay (US),Fetal Head Circumference measured by ellipse overlay (US),OB.US,Len,Pt,Head^Fetus,Qn,US.measured.ellipse overlay,cm,ACTIVE
+11994-1,Placenta position US,Placenta position US,OB.US,Find,Pt,Uterus,Nom,US.measured,,ACTIVE
+11995-8,Narrative Placenta position US,Narrative Placenta position US,OB.US,Find,Pt,Uterus,Nar,US.measured,,ACTIVE
+12055-0,Fetal Face Study observation US,Fetal Face Study observation US,OB.US,Find,Pt,Face^Fetus,Nom,US,,ACTIVE
+12056-8,Fetal Face Narrative Study observation US,Fetal Face Narrative Study observation US,OB.US,Find,Pt,Face^Fetus,Nar,US,,ACTIVE
+12061-8,Fetal Intracranial anatomy Study observation US,Fetal Intracranial anatomy Study observation US,OB.US,Find,Pt,Head.intracranial anatomy^Fetus,Nom,US,,ACTIVE
+12069-1,Fetal Head Study observation US,Fetal Head Study observation US,OB.US,Find,Pt,Head^Fetus,Nom,US,,ACTIVE
+12075-8,Fetal Heart chambers Study observation US,Fetal Heart chambers Study observation US,OB.US,Find,Pt,Heart.chambers^Fetus,Nom,US,,ACTIVE
+12076-6,Fetal Heart chambers Narrative Study observation US,Fetal Heart chambers Narrative Study observation US,OB.US,Find,Pt,Heart.chambers^Fetus,Nar,US,,ACTIVE
+12077-4,Fetal Heart great vessels Study observation US,Fetal Heart great vessels Study observation US,OB.US,Find,Pt,Heart.great vessels^Fetus,Nom,US,,ACTIVE
+12078-2,Fetal Heart great vessels Narrative Study observation US,Fetal Heart great vessels Narrative Study observation US,OB.US,Find,Pt,Heart.great vessels^Fetus,Nar,US,,ACTIVE
+12086-5,Fetal Heart valves Study observation US,Fetal Heart valves Study observation US,OB.US,Find,Pt,Heart.valves^Fetus,Nom,US,,ACTIVE
+12087-3,Fetal Heart valves Narrative Study observation US,Fetal Heart valves Narrative Study observation US,OB.US,Find,Pt,Heart.valves^Fetus,Nar,US,,ACTIVE
+12110-3,Fetal Spine Study observation US,Fetal Spine Study observation US,OB.US,Find,Pt,Spine^Fetus,Nom,US,,ACTIVE
+12111-1,Fetal Spine Narrative Study observation US,Fetal Spine Narrative Study observation US,OB.US,Find,Pt,Spine^Fetus,Nar,US,d,ACTIVE
+12116-0,Fetal Umbilical cord Study observation US,Fetal Head Diameter.biparietal outer to inner US,OB.US,Find,Pt,Umbilical cord^Fetus,Nom,US,mm,ACTIVE
+12117-8,Fetal Umbilical cord Narrative Study observation US,Fetal Head Diameter.biparietal outer to outer US,OB.US,Find,Pt,Umbilical cord^Fetus,Nar,US,mm,ACTIVE
+12120-2,Fetal Inferior vena cava Study observation US,Fetal Heart Study observation US,OB.US,Find,Pt,Vena cava.inferior^Fetus,Nom,US,,ACTIVE
+12121-0,Fetal Inferior vena cava Narrative Study observation US,Fetal Gestational age Estimated from patient reported estimated date of conception,OB.US,Find,Pt,Vena cava.inferior^Fetus,Nar,US,d,ACTIVE
+12122-8,Fetal Superior vena cava Study observation US,Fetal Gestational age Estimated from conception date,OB.US,Find,Pt,Vena cava.superior^Fetus,Nom,US,,ACTIVE
+12123-6,Fetal Superior vena cava Narrative Study observation US,Fetal Femur diaphysis [Length] mean Estimated from gestational age,OB.US,Find,Pt,Vena cava.superior^Fetus,Nar,US,mm,ACTIVE
+12124-4,Fetal Vena cava Study observation US,Fetal Heart rate,OB.US,Find,Pt,Vena cava^Fetus,Nom,US,{beats}/min,ACTIVE
+12125-1,Fetal Vena cava Narrative Study observation US,Fetal Heart rate by Auscultation,OB.US,Find,Pt,Vena cava^Fetus,Nar,US,{beats}/min,ACTIVE
+12126-9,Body region Narrative Study observation US,Fetal chromosome X & Y analysis in Amniotic fluid by NAA with probe detection,OB.US,Find,Pt,XXX,Nar,US,,ACTIVE
+12128-5,Fetal Yolk sac Narrative Study observation US,Head circumference/Abdominal circumference percentile US+Per gestational age,OB.US,Find,Pt,Yolk sac^Fetus,Nar,US,%,ACTIVE
+12129-3,Fetal [Interpretation] Study observation general US,Fetal Head circumference/Abdominal circumference by US,OB.US,Imp,Pt,^Fetus,Nom,US,,ACTIVE
+12130-1,Fetal Narrative [Interpretation] Study observation general US,Fetal Femur diaphysis [Length]/Head Diameter.biparietal US+Ratio,OB.US,Imp,Pt,^Fetus,Nar,US,{ratio},ACTIVE
+12132-7,Narrative [Interpretation] Study observation general US,Fetal Head Diameter.biparietal [Length] max US,OB.US,Imp,Pt,^Patient,Nar,US,mm,ACTIVE
+12133-5,Fetal Cerebral artery anterior Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^First,OB.US,VelRto,Pt,Cerebral artery anterior^Fetus,Qn,US.doppler,{ratio},ACTIVE
+12134-3,Cerebral artery anterior Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Second,OB.US,VelRto,Pt,Cerebral artery anterior,Qn,US.doppler,{ratio},ACTIVE
+12135-0,Fetal Cerebral artery middle Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Third,OB.US,VelRto,Pt,Cerebral artery middle^Fetus,Qn,US.doppler,{ratio},ACTIVE
+12136-8,Cerebral artery middle Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Fourth,OB.US,VelRto,Pt,Cerebral artery middle,Qn,US.doppler,{ratio},ACTIVE
+12137-6,Ovarian artery - left Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Fifth,OB.US,VelRto,Pt,Ovarian artery.left,Qn,US.doppler,{ratio},ACTIVE
+12138-4,Ovarian artery - right Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Sixth,OB.US,VelRto,Pt,Ovarian artery.right,Qn,US.doppler,{ratio},ACTIVE
+12139-2,Fetal Umbilical artery at fetus Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Seventh,OB.US,VelRto,Pt,Umbilical artery.at fetus^Fetus,Qn,US.doppler,{ratio},ACTIVE
+12140-0,Fetal Umbilical artery at placenta Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Eighth,OB.US,VelRto,Pt,Umbilical artery.at placenta^Fetus,Qn,US.doppler,{ratio},ACTIVE
+12141-8,Fetal Umbilical artery between fetus and placenta Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Ninth,OB.US,VelRto,Pt,Umbilical artery.between fetus and placenta^Fetus,Qn,US.doppler,{ratio},ACTIVE
+12142-6,Uterine artery - left Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Tenth,OB.US,VelRto,Pt,Uterine artery.left,Qn,US.doppler,{ratio},ACTIVE
+12143-4,Uterine artery - right Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Eleventh,OB.US,VelRto,Pt,Uterine artery.right,Qn,US.doppler,{ratio},ACTIVE
+12144-2,Systolic flow/Diastolic flow US.doppler,Fetal Head Diameter.biparietal [Length] max US^Twelfth,OB.US,VelRto,Pt,^Patient,Qn,US.doppler,{ratio},ACTIVE
+12145-9,Endometrium Thickness US,Fetal Head Diameter.biparietal [Length] max US^Thirteenth,OB.US,Len,Pt,Endometrium,Qn,US.measured,mm,ACTIVE
+12146-7,Fetal Nuchal fold Thickness US,Fetal Head Diameter.biparietal [Length] max US^Fourteenth,OB.US,Len,Pt,Nuchal fold^Fetus,Qn,US.measured,mm,ACTIVE
+18850-8,Narrative Fetal presentation US,Narrative Fetal presentation US,OB.US,Type,Pt,Pelvis,Nar,US,,ACTIVE
+33071-2,Fetal Spine Length from T6 to L3 US,Fetal Spine Length from T6 to L3 US,OB.US,Len,Pt,Spine^Fetus,Qn,US.measured,mm,ACTIVE
+33145-4,Fetal Abdomen Circumference estimated from gestational age by method of Australian Society of Ultrasound Medicine 2000 (US),Fetal Abdomen Circumference estimated from gestational age by method of Australian Society of Ultrasound Medicine 2000 (US),OB.US,Len,Pt,Abdomen^Fetus,Qn,US.estimated from ASUM 2000,mm,ACTIVE
+33146-2,Fetal Abdomen Circumference estimated from gestational age by method of Hadlock 1984 (US),Fetal Abdomen Circumference estimated from gestational age by method of Hadlock 1984 (US),OB.US,Len,Pt,Abdomen^Fetus,Qn,US.estimated from Hadlock 1984,mm,ACTIVE
+33162-9,Fetal Body weight US+Estimated from Hadlock 1991,Fetal Body weight US+Estimated from Hadlock 1991,OB.US,Mass,Pt,^Fetus,Qn,US+Estimated from Hadlock 1991,kg,ACTIVE
+33166-0,Fetal Femur diaphysis [Length] estimated from gestational age by method of Hadlock 1984 (US),Fetal Femur diaphysis [Length] estimated from gestational age by Hadlock 1984 (US),OB.US,Len,Pt,Femur.diaphysis^Fetus,Qn,US.estimated from Hadlock 1984,mm,ACTIVE
+33168-6,Fetal Femur diaphysis [Length] estimated from gestational age by method of Jeanty 1982 (US),Fetal Femur diaphysis [Length] estimated from gestational age by Jeanty 1982 (US),OB.US,Len,Pt,Femur.diaphysis^Fetus,Qn,US.estimated from Jeanty 1982,mm,ACTIVE
+33173-6,Fetal Head Circumference estimated from gestational age by method of Hadlock 1984 (US),Fetal Head Circumference estimated from gestational age by method of Hadlock 1984 (US),OB.US,Len,Pt,Head^Fetus,Qn,US.estimated from Hadlock 1984,mm,ACTIVE
+33190-0,Fetal body weight growth percentile estimated from gestational age by method of Hadlock 1985 (US),Fetal body weight growth percentile estimated from GA by Hadlock 1985 (US),OB.US,Prctl,Pt,^Fetus,Qn,US.estimated from Hadlock 1985,%,ACTIVE
+49051-6,Gestational age in weeks,Gestational age in weeks,OB.US,Time,Pt,^Fetus,Qn,,wk,ACTIVE
+53686-2,Fetal Neck Narrative Study observation US,Fetal Neck Narrative Study observation US,OB.US,Find,Pt,Neck^Fetus,Nar,US,,ACTIVE
+53691-2,Gestational age Estimated from patient reported estimated date of conception,Gestational age Estimated from patient reported estimated date of conception,OB.US,Time,Pt,^Fetus,Qn,Estimated from patient reported EDC,d,ACTIVE
+53693-8,Gestational age Estimated from conception date,Gestational age Estimated from conception date,OB.US,Time,Pt,^Fetus,Qn,Estimated from conception date,d,ACTIVE
+80415-3,Fetal Body weight growth percentile US+Estimated from Hadlock 1991,Fetal Body weight growth percentile US+Estimated from Hadlock 1991,OB.US,Prctl,Pt,^Fetus,Qn,US+Estimated from Hadlock 1991,%,ACTIVE
+90367-4,Gestational age Estimated from physical exam,Gestational age Estimated from physical exam,OB.US,Time,Pt,^Fetus,Qn,Estimated from physical examination,d,ACTIVE
+95940-3,Fetal Head Diameter.biparietal percentile per estimated gestational age,Fetal Head Diameter.biparietal percentile per estimated gestational age,OB.US,Prctl,Pt,Head^Fetus,Qn,Per estimated gestational age,%,ACTIVE
+98031-8,Body weight discordance in multiple fetuses US+Calculated,Fetal Body weight discordance US+Estimated from Hadlock 1991,OB.US,MRto,Pt,^Fetuses,Qn,US+Calculated,%,ACTIVE
+98032-6,Fetal body weight/Heaviest fetus body weight US+Calculated,Fetal Body weight.current fetus compared to co-fetus US+Estimated from Hadlock 1991,OB.US,MRto,Pt,^Fetuses,Qn,US+Calculated,%,ACTIVE

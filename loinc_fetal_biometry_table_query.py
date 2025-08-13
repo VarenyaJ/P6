@@ -218,3 +218,33 @@ def load_loinc_dataframe(loinc_csv_path: Path) -> pd.DataFrame:
         raise SystemExit(f"Missing expected columns in LOINC CSV: {missing_columns}")
     return loinc_dataframe
 
+
+def read_excel_headers(excel_path: Path, sheet_name: str) -> List[str]:
+    """
+    Read the header row from the given Excel sheet.
+
+    Parameters
+    ----------
+    excel_path : Path
+        Path to the Excel workbook.
+    sheet_name : str
+        Sheet name containing fetal biometry headers.
+
+    Returns
+    -------
+    list of str
+        Column names used as search headers.
+
+    Raises
+    ------
+    SystemExit
+        If the sheet is not found.
+    """
+    excel_file = pd.ExcelFile(excel_path)
+    if sheet_name not in excel_file.sheet_names:
+        raise SystemExit(f"Sheet '{sheet_name}' not found in {excel_path}. "
+                         f"Found: {excel_file.sheet_names}")
+    # Read only the header row for efficiency
+    df = pd.read_excel(excel_path, sheet_name=sheet_name, nrows=0)
+    return list(df.columns)
+

@@ -674,3 +674,61 @@ def build_text_variants(user_term: str, normalized: str) -> List[str]:
             seen.add(t)
     return uniq
 
+
+# ----------------------------
+# PROPERTY expectations
+# ----------------------------
+
+
+def expected_properties_for_intent(
+    user_term: str, normalized: str
+) -> Optional[Set[str]]:
+    """Map intent to expected LOINC PROPERTY codes.
+
+    PROPERTY examples
+    -----------------
+    ``Len`` (length), ``Diam`` (diameter), ``Circ`` (circumference), ``Mass``,
+    ``Rate``, ``Rto`` (ratio).
+
+    Parameters
+    ----------
+    user_term : str
+        Raw term.
+    normalized : str
+        Normalized term.
+
+    Returns
+    -------
+    set of str or None
+        Expected PROPERTY values, or ``None`` if unconstrained.
+    """
+    text = f"{user_term} {normalized}".lower()
+    if "circumference" in text:
+        return {"Circ"}
+    if "diameter" in text or "bpd" in text:
+        return {"Diam", "Len"}
+    if any(
+        k in text
+        for k in [
+            "length",
+            "femur",
+            "humerus",
+            "radius",
+            "ulna",
+            "tibia",
+            "fibula",
+            "long bone",
+        ]
+    ):
+        return {"Len"}
+    if "heart rate" in text or "fhr" in text or "rate" in text:
+        return {"Rate"}
+    if any(k in text for k in ["estimated fetal weight", "efw", "weight", "mass"]):
+        return {"Mass"}
+    if "cisterna magna" in text:
+        return {"Diam", "Len"}
+    if "cerebellum" in text:
+        return {"Diam", "Len", "Circ"}
+    if " ratio " in text or "/" in strip_units(user_term):
+        return {"Rto"}
+    return None

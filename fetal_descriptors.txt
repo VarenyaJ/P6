@@ -1,0 +1,25 @@
+Gestational Age
+BPD (cm)
+HC (cm)
+AC (cm)
+Femur (cm)
+Cerebellum (cm)
+Cisterna Magna (mm)
+Humerus (cm)
+Radius (cm)
+Ulna (cm)
+Tibia (cm)
+Fibula (cm)
+HC/AC
+FL/AC
+FL/BPD
+EFW (g)
+EFW Percentile
+FHR (bpm)
+Presentation
+Placenta Appearance
+Heart Abnormal
+Head Abnormal
+Face/Neck Abnormal
+Spine Abnormal
+Genitalia Normal

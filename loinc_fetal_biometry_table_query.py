@@ -337,3 +337,50 @@ def build_search_regex(terms: Iterable[str]) -> str:
         return r"(?!x)x"
     return r"\b(?:%s)\b" % "|".join(escaped_terms)
 
+
+
+def row_has_ob_fetal_context(row: pd.Series) -> bool:
+    """
+    Heuristic: decide whether a LOINC row indicates OB/fetal ultrasound context.
+
+    Signals (any is sufficient)
+    ---------------------------
+    - CLASS is OB.US or PANEL.OB.US
+    - SYSTEM contains fetal/placental structures or related anatomy
+    - METHOD_TYP contains 'US'
+    - Text contains 'fetal'/'fetus' in COMPONENT/LONG_COMMON_NAME/SHORTNAME
+
+    Parameters
+    ----------
+    row : pandas.Series
+        A single row from the LOINC table.
+
+    Returns
+    -------
+    bool
+        True if the row is likely OB/fetal; False otherwise.
+    """
+    loinc_class = (row.get("CLASS") or "").upper()
+    system_text = (row.get("SYSTEM") or "").lower()
+    component_text = (row.get("COMPONENT") or "").lower()
+    long_name_text = (row.get("LONG_COMMON_NAME") or "").lower()
+    short_name_text = (row.get("SHORTNAME") or "").lower()
+    method_text = (row.get("METHOD_TYP") or "").upper()
+
+    contains_fetal_word = (
+        "fetal" in component_text
+        or "fetal" in long_name_text
+        or "fetal" in short_name_text
+    )
+    class_is_ob = loinc_class in OB_ULTRASOUND_CLASSES
+    method_is_ultrasound = "US" in method_text
+    system_is_ob = any(keyword in system_text for keyword in OB_SYSTEM_KEYWORDS)
+    system_mentions_fetus = "fetus" in system_text
+
+    return (
+        contains_fetal_word
+        or class_is_ob
+        or (method_is_ultrasound and system_is_ob)
+        or system_mentions_fetus
+    )
+

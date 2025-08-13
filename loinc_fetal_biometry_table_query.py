@@ -1,4 +1,71 @@
 #!/usr/bin/env python3
+"""
+Filtered LOINC lookup for fetal biometry headers (OB ultrasound–focused).
+
+This script searches a local LOINC 2.80 `LoincTableCore.csv` for codes related to
+column headers in an Excel sheet (default: 'fetal_biometry'). It returns the requested
+LOINC metadata while filtering to fetal/OB ultrasound context to avoid noisy matches
+(e.g., adult EKG heart-rate).
+
+Core features
+-------------
+1) Header term expansion:
+   - Normalizes column headers (lowercases, removes units in parentheses).
+   - Splits into tokens and adds helpful aliases (e.g., "bpd" → "biparietal diameter").
+
+2) Targeted search fields:
+   - Searches within COMPONENT, LONG_COMMON_NAME, SHORTNAME using a single
+     word-bounded, non-capturing regex.
+
+3) Fetal/OB context filtering (default ON):
+   - Keeps rows that are strongly OB/fetal (e.g., CLASS in {OB.US, PANEL.OB.US},
+     SYSTEM mentions fetal/placental structures, METHOD_TYP includes US, or the text
+     contains "fetal"/"fetus").
+
+4) Scoring and trimming:
+   - Ranks candidates by fetal context strength, header-term presence, and
+     property hints (e.g., Len for BPD/HC/AC; Mass for EFW; NRat for FHR).
+   - Keeps top N rows per header (default 50).
+
+Outputs
+-------
+CSV with columns:
+  Header, LOINC_NUM, COMPONENT, PROPERTY, TIME_ASPCT, SYSTEM, SCALE_TYP,
+  METHOD_TYP, CLASS, CLASSTYPE, LONG_COMMON_NAME, SHORTNAME
+
+Run instructions
+----------------
+Prerequisites
+^^^^^^^^^^^^^
+- Python 3.9+ recommended
+- Install dependencies:
+  ``pip install pandas openpyxl``  (``openpyxl`` is needed to read Excel)
+
+Basic usage
+^^^^^^^^^^^
+- Minimal:
+  ``python loinc_fetal_biometry_table_query.py --loinc-csv /path/to/LoincTableCore.csv --excel /path/to/workbook.xlsx``
+
+- With options:
+  ``python loinc_fetal_biometry_table_query.py \
+      --loinc-csv ~/Downloads/Loinc_2.80/LoincTableCore.csv \
+      --excel ./fetal_biometry.xlsx \
+      --sheet fetal_biometry \
+      --out fetal_biometry_loinc_matches.filtered.csv \
+      --max-per-header 50 \
+      --debug``
+
+Flags
+^^^^^
+- ``--loinc-csv`` (required): Path to ``LoincTableCore.csv`` (LOINC 2.80 format).
+- ``--excel`` (required): Path to the Excel workbook containing the headers.
+- ``--sheet``: Excel sheet name with biometry headers (default: ``fetal_biometry``).
+- ``--out``: Output CSV path (default: ``fetal_biometry_loinc_matches.filtered.csv``).
+- ``--max-per-header``: Max rows to keep per header after scoring (default: 50).
+- ``--no-context-filter``: Disable OB/fetal context filter (not recommended).
+- ``--debug``: Enable verbose diagnostics (uses logging, not prints).
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -154,7 +221,6 @@ def parse_cli_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-
 def configure_logging(debug: bool) -> None:
     """
     Configure the root logger.
@@ -166,7 +232,6 @@ def configure_logging(debug: bool) -> None:
     """
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
-
 
 
 def validate_paths(loinc_csv_path: Path, excel_path: Path) -> None:
@@ -189,8 +254,6 @@ def validate_paths(loinc_csv_path: Path, excel_path: Path) -> None:
         raise FileNotFoundError(f"LOINC CSV not found: {loinc_csv_path}")
     if not excel_path.exists():
         raise FileNotFoundError(f"Excel file not found: {excel_path}")
-
-
 
 
 def load_loinc_dataframe(loinc_csv_path: Path) -> pd.DataFrame:
@@ -249,7 +312,6 @@ def read_excel_headers(excel_path: Path, sheet_name: str) -> List[str]:
     return list(df.columns)
 
 
-
 def normalize_header_to_term(header_text: object) -> str:
     """
     Normalize a column header into a search-friendly base term.
@@ -274,7 +336,6 @@ def normalize_header_to_term(header_text: object) -> str:
     text = re.sub(r"\(.*?\)", "", header_text)  # remove "(...)"
     text = re.sub(r"\s+", " ", text).strip().lower()
     return text
-
 
 
 def collect_search_terms_for_header(header_text: str) -> List[str]:
@@ -316,7 +377,6 @@ def collect_search_terms_for_header(header_text: str) -> List[str]:
     return sorted(t for t in terms if t)
 
 
-
 def build_search_regex(terms: Iterable[str]) -> str:
     """
     Construct a word-bounded, non-capturing regex that matches any of the terms.
@@ -336,7 +396,6 @@ def build_search_regex(terms: Iterable[str]) -> str:
         # A regex that never matches (used when no terms were generated)
         return r"(?!x)x"
     return r"\b(?:%s)\b" % "|".join(escaped_terms)
-
 
 
 def row_has_ob_fetal_context(row: pd.Series) -> bool:
@@ -383,7 +442,6 @@ def row_has_ob_fetal_context(row: pd.Series) -> bool:
         or (method_is_ultrasound and system_is_ob)
         or system_mentions_fetus
     )
-
 
 
 def score_candidate_row(
@@ -455,7 +513,6 @@ def score_candidate_row(
     return score
 
 
-
 def get_property_hints_for_header(header: str) -> Set[str]:
     """
     Retrieve PROPERTY hints for a header using both the full normalized header
@@ -479,7 +536,6 @@ def get_property_hints_for_header(header: str) -> Set[str]:
     for key in hint_keys:
         allowed |= PROPERTY_HINTS_BY_HEADER.get(key, set())
     return allowed
-
 
 
 def build_search_mask(
@@ -508,8 +564,6 @@ def build_search_mask(
     for field in fields_to_search:
         mask = mask | loinc_dataframe[field].str.contains(regex, case=False, na=False, regex=True)
     return mask
-
-
 
 
 def process_single_header(
@@ -602,8 +656,6 @@ def process_single_header(
     return candidate_rows
 
 
-
-
 def write_output(output_dataframe: pd.DataFrame, output_path: Path) -> None:
     """
     Write results to CSV and log a short summary.
@@ -617,8 +669,6 @@ def write_output(output_dataframe: pd.DataFrame, output_path: Path) -> None:
     """
     output_dataframe.to_csv(output_path, index=False)
     LOGGER.info("Wrote %d rows to %s", len(output_dataframe), output_path)
-
-
 
 
 def main() -> None:

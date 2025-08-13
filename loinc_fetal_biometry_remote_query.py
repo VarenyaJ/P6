@@ -1826,3 +1826,89 @@ def process_one_term(
         "normalized": normalized,
     }
 
+
+# ----------------------------
+# Console preview & warnings
+# ----------------------------
+
+
+def _pick_best_per_term(
+    all_best_rows: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """From possibly multiple rows per term, pick the top-ranked one.
+
+    Parameters
+    ----------
+    all_best_rows : list of dict
+        Rows from all terms (may contain multiple ranks per term).
+
+    Returns
+    -------
+    dict
+        Mapping of term → best row.
+    """
+    best_by_term: Dict[str, Dict[str, Any]] = {}
+    for r in all_best_rows:
+        key = r["search_term"]
+        current_rank = best_by_term.get(key, {}).get("rank") or math.inf
+        if r["rank"] is not None and (r["rank"] < current_rank):
+            best_by_term[key] = r
+        elif key not in best_by_term:
+            best_by_term[key] = r
+    return best_by_term
+
+
+def _warning_bits_for_row(term: str, r: Dict[str, Any]) -> List[str]:
+    """Collect warning badges for a chosen row (e.g., derived, percentile, scale mismatch)."""
+    warn_bits: List[str] = []
+    if r.get("is_part"):
+        warn_bits.append("LOINC Part (not reportable)")
+    if r.get("is_answer_list"):
+        warn_bits.append("Answer list (not a measurement)")
+    if r.get("is_deprecated"):
+        warn_bits.append("DEPRECATED")
+    if r.get("is_derived"):
+        warn_bits.append("derived/methodized")
+    if r.get("is_percentile"):
+        warn_bits.append("percentile")
+
+    num_hint = any(u in term.lower() for u in ["(cm)", "(mm)", "(g)", "(bpm)"]) or any(
+        k in term.lower()
+        for k in ["length", "diameter", "circumference", "weight", "mass", "rate"]
+    )
+    if num_hint and (not r.get("property_match") or not r.get("scale_match")):
+        warn_bits.append("NOT Qn / PROPERTY mismatch for numeric intent")
+    return warn_bits
+
+
+def print_console_preview(all_best_rows: List[Dict[str, Any]]) -> None:
+    """Log a human-readable preview (top pick per term) using ``logging``.
+
+    Parameters
+    ----------
+    all_best_rows : list of dict
+        All top-k rows across terms.
+    """
+    logging.info("=== LOINC lookup preview (best per term) ===")
+    best_by_term = _pick_best_per_term(all_best_rows)
+
+    printed_warnings = []
+    for term, r in best_by_term.items():
+        if r.get("error"):
+            logging.info("- %s: ERROR — %s", term, r["error"])
+            continue
+        code = r.get("loinc_code")
+        disp = r.get("display")
+        logging.info("- %s: %s — %s", term, code, disp)
+        warn_bits = _warning_bits_for_row(term, r)
+        if warn_bits:
+            printed_warnings.append((term, warn_bits))
+
+    if printed_warnings:
+        logging.warning("WARNING: Some 'best' picks have caveats:")
+        for term, bits in printed_warnings:
+            logging.warning("  • %s: %s", term, "; ".join(bits))
+        logging.warning(
+            "  (See CSV columns is_derived/is_percentile/scale_match/property_match/stage/score.)"
+        )
+    logging.info("(See CSV for all matches and properties.)")

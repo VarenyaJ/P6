@@ -618,3 +618,49 @@ def write_output(output_dataframe: pd.DataFrame, output_path: Path) -> None:
     output_dataframe.to_csv(output_path, index=False)
     LOGGER.info("Wrote %d rows to %s", len(output_dataframe), output_path)
 
+
+
+
+def main() -> None:
+    """
+    Orchestrate parsing args, loading data, processing headers, and writing output.
+
+    Notes
+    -----
+    This function is intentionally kept simple to satisfy complexity linting.
+    """
+    args = parse_cli_args()
+    configure_logging(args.debug)
+
+    loinc_csv_path = Path(args.loinc_csv)
+    excel_path = Path(args.excel)
+    validate_paths(loinc_csv_path, excel_path)
+
+    loinc_dataframe = load_loinc_dataframe(loinc_csv_path)
+    excel_headers = read_excel_headers(excel_path, args.sheet)
+
+    fields_to_search = ["COMPONENT", "LONG_COMMON_NAME", "SHORTNAME"]
+    result_chunks: List[pd.DataFrame] = []
+
+    for header in excel_headers:
+        chunk = process_single_header(
+            loinc_dataframe=loinc_dataframe,
+            header=header,
+            fields_to_search=fields_to_search,
+            max_per_header=args.max_per_header,
+            use_context_filter=not args.no_context_filter,
+        )
+        if not chunk.empty:
+            result_chunks.append(chunk)
+
+    output_dataframe = (
+        pd.concat(result_chunks, ignore_index=True)
+        if result_chunks
+        else pd.DataFrame(columns=["Header"] + REQUESTED_OUTPUT_COLUMNS)
+    )
+
+    write_output(output_dataframe, Path(args.out))
+
+
+if __name__ == "__main__":
+    main()

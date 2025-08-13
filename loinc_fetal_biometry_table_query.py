@@ -276,3 +276,42 @@ def normalize_header_to_term(header_text: object) -> str:
     return text
 
 
+
+def collect_search_terms_for_header(header_text: str) -> List[str]:
+    """
+    Build a list of search terms for a given header.
+
+    The list includes:
+    - The normalized base term.
+    - Tokenized words from the base term.
+    - Helpful aliases for the base term and its first token.
+
+    Parameters
+    ----------
+    header_text : str
+        The column header from the Excel sheet.
+
+    Returns
+    -------
+    list of str
+        Unique, non-empty search terms, sorted for determinism.
+    """
+    base = normalize_header_to_term(header_text)
+    terms: Set[str] = set()
+    if base:
+        terms.add(base)
+        # token-level terms (e.g., "cisterna magna" → {"cisterna", "magna"})
+        for token in re.split(r"[\/\-\s]+", base):
+            token = token.strip()
+            if token:
+                terms.add(token)
+
+        # alias expansion on base and on first token
+        if base in HEADER_ALIASES:
+            terms.update(HEADER_ALIASES[base])
+        first_token = base.split()[0] if base else ""
+        if first_token in HEADER_ALIASES:
+            terms.update(HEADER_ALIASES[first_token])
+
+    return sorted(t for t in terms if t)
+

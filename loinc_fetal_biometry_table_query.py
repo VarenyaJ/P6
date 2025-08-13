@@ -601,3 +601,20 @@ def process_single_header(
 
     return candidate_rows
 
+
+
+
+def write_output(output_dataframe: pd.DataFrame, output_path: Path) -> None:
+    """
+    Write results to CSV and log a short summary.
+
+    Parameters
+    ----------
+    output_dataframe : pandas.DataFrame
+        Final concatenated results with a leading ``Header`` column.
+    output_path : Path
+        Destination CSV path.
+    """
+    output_dataframe.to_csv(output_path, index=False)
+    LOGGER.info("Wrote %d rows to %s", len(output_dataframe), output_path)
+

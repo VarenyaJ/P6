@@ -454,3 +454,29 @@ def score_candidate_row(
 
     return score
 
+
+
+def get_property_hints_for_header(header: str) -> Set[str]:
+    """
+    Retrieve PROPERTY hints for a header using both the full normalized header
+    and its first token (if present).
+
+    Parameters
+    ----------
+    header : str
+        Header text from the Excel sheet.
+
+    Returns
+    -------
+    set of str
+        Allowed PROPERTY values for this header (may be empty).
+    """
+    normalized_header = normalize_header_to_term(header)
+    hint_keys: Set[str] = {normalized_header} if normalized_header else set()
+    if normalized_header:
+        hint_keys.add(normalized_header.split()[0])
+    allowed: Set[str] = set()
+    for key in hint_keys:
+        allowed |= PROPERTY_HINTS_BY_HEADER.get(key, set())
+    return allowed
+

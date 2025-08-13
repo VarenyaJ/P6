@@ -315,3 +315,25 @@ def collect_search_terms_for_header(header_text: str) -> List[str]:
 
     return sorted(t for t in terms if t)
 
+
+
+def build_search_regex(terms: Iterable[str]) -> str:
+    """
+    Construct a word-bounded, non-capturing regex that matches any of the terms.
+
+    Parameters
+    ----------
+    terms : Iterable[str]
+        The search terms.
+
+    Returns
+    -------
+    str
+        Regex string suitable for ``Series.str.contains(..., regex=True)``.
+    """
+    escaped_terms = [re.escape(t) for t in terms if t]
+    if not escaped_terms:
+        # A regex that never matches (used when no terms were generated)
+        return r"(?!x)x"
+    return r"\b(?:%s)\b" % "|".join(escaped_terms)
+

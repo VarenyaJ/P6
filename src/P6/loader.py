@@ -13,6 +13,17 @@ RENAME_MAP = {
     "hpo": "hpo_id",
     "hpo_term": "hpo_id",  # also catch "HPO Term" → hpo_term → hpo_id
     "timestamp": "date_of_observation",
+    "disease_term": "disease_term",
+    "disease_label": "disease_label",
+    "disease_onset": "disease_onset",
+    "disease_status": "disease_status",
+    "measurement_type": "measurement_type",
+    "measurement_value": "measurement_value",
+    "measurement_unit": "measurement_unit",
+    "measurement_timestamp": "measurement_timestamp",
+    "biosample_id": "biosample_id",
+    "biosample_type": "biosample_type",
+    "collection_date": "collection_date",
 }
 
 

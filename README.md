@@ -1,7 +1,7 @@
 # P6
 **Peter's Parse and Processing of Prenatal Particulars via Pandas**
 
-A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing genotype/phenotype Excel workbooks, and producing [GA4GH Phenopackets](https://phenopacket-schema.readthedocs.io/en/latest/schema.html#version-2-0) as specified [here](https://phenopacket-schema.readthedocs.io/_/downloads/en/stable/pdf/).
+A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing genotype/phenotype Excel workbooks, and producing [GA4GH Phenopackets](https://phenopacket-schema.readthedocs.io/en/latest/schema.html#version-2-0) as specified [here](https://phenopacket-schema.readthedocs.io/_/downloads/en/stable/pdf/). This project enables downloading the latest or specified Human Phenotype Ontology (HPO) JSON release, auto-classifying Excel sheets as genotype or phenotype data, normalizing column names and HPO IDs, and writing one Phenopacket per record. Additional commands provide quick auditing of workbooks for header normalization, sheet classification, and required variant columns. Built for easy integration and reproducibility, P6 supports rapid phenotypic data preparation for research and clinical workflows, and runs locally with simple installation via pip. The end usage of this project is to convert an existing digital record of phenotypic data into phenopackets, such that they may be linked to their corresponding VCFs and used to integrate with a larger federated repository system.
 
 ## Table of Contents
 
@@ -10,10 +10,12 @@ A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing g
 3. [Installation](#installation)  
 4. [Quickstart](#quickstart)  
    - [Download HPO JSON](#download-hpo-json)  
-   - [Parse Excel to Phenopackets](#parse-excel-to-phenopackets)  
+   - [Parse Excel to Phenopackets](#parse-excel-to-phenopackets)
+   - [Audit Excel Workbooks](#audit-excel-workbooks)
 5. [CLI Reference](#cli-reference)  
    - [`p6 download`](#p6-download)  
    - [`p6 parse-excel`](#p6-parse-excel)  
+   - [`p6 audit-excel`](#p6-audit-excel)
 6. [Development & Testing](#development--testing)  
 7. [Contributing](#contributing)  
 8. [License](#license)  
@@ -94,6 +96,18 @@ Resulting phenopacket files will be under:
 phenopacket_from_excel/$(date "+%Y-%m-%d_%H-%M-%S")/phenopackets/
 ```
 
+### Audit Excel Workbooks
+
+Quickly check each sheet in an Excel file for header normalization, sheet classification, and presence of required variant columns.
+```bash
+p6 audit-excel -e tests/data/Sydney_Python_transformation.xlsx
+```
+
+By default you get a table; use `-r` for a JSON output to the console.
+```bash
+p6 audit-excel -e tests/data/Sydney_Python_transformation.xlsx -r
+```
+
 ## CLI Reference
 
 ### p6 download
@@ -101,11 +115,13 @@ phenopacket_from_excel/$(date "+%Y-%m-%d_%H-%M-%S")/phenopackets/
 Usage:
 ```markdown
 p6 download [OPTIONS]
+```
 
 Options:
-    -d, --data-path PATH    where to save HPO JSON (default: tests/data)
-    -v, --hpo-version TEXT  exact HPO release tag (e.g. 2025-03-03 or v2025-03-03)
-    --help                  Show this help message and exit.
+```markdown
+    -d, --data-path PATH        where to save HPO JSON (default: tests/data)
+    -v, --hpo-version TEXT      exact HPO release tag (e.g. 2025-03-03 or v2025-03-03)
+    --help                      Show this help message and exit.
 ```
 
 Examples:
@@ -130,9 +146,9 @@ Usage: `p6 parse-excel [OPTIONS] EXCEL_FILE`
 
 Options:
 ```markdown
-    -e, --excel-path FILE    path to the Excel workbook  [required]
-    -hpo, --custom-hpo FILE  path to a custom HPO JSON file (defaults to `tests/data/hp.json`)
-    --help                  Show this message and exit.
+    -e, --excel-path FILE       path to the Excel workbook  [required]
+    -hpo, --custom-hpo FILE     path to a custom HPO JSON file (defaults to `tests/data/hp.json`)
+    --help                      Show this message and exit.
 ```
 
 Example:
@@ -140,6 +156,19 @@ Example:
 Explicitly point at a custom HPO file:
 ```bash
 p6 parse-excel -e tests/data/Sydney_Python_transformation.xlsx -hpo src/P6/hp.json
+```
+
+### p6 audit-excel
+
+Run a lightweight audit on each sheet in an Excel workbook, reporting header counts, sheet classification, and missing variant‐column checks.
+
+Usage: `p6 audit-excel [OPTIONS] EXCEL_FILE`
+
+Options:
+```markdown
+    -e, --excel-path FILE   path to the Excel workbook  [required]
+    -r, --report-json       output audit report as JSON instead of table
+    --help                  Show this message and exit.
 ```
 
 ## Development & Testing

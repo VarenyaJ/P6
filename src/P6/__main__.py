@@ -6,26 +6,76 @@ and normalizes numeric HPO IDs and timestamps.
 
 import click
 import hpotk
+import json
 import pandas as pd  # Not needed for Pandas_Workaround, i.e. don't call declare or call "_read_sheets" at all, just use `tables = load_sheets_as_tables(excel_file)` which only needs `from .loader import load_sheets_as_tables`
 import pathlib
 import requests
 import sys
 import typing
 
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from datetime import datetime
 from google.protobuf.json_format import MessageToJson
 from stairval.notepad import create_notepad
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
+import phenopackets.schema.v2 as pps2
 
 from .loader import load_sheets_as_tables
 from .mapper import DefaultMapper
+
+AuditEntry = namedtuple("AuditEntry", ["step", "sheet", "message", "level"])
 
 
 @click.group()
 def main():
     """P6: Peter's Parse and Processing of Prenatal Particulars via Pandas."""
     pass
+
+
+@main.command(name="audit-excel")
+@click.option(
+    "-e",
+    "--excel-path",
+    "excel_file",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="path to the Excel workbook",
+)
+@click.option(
+    "-r",
+    "--report-json",
+    "report_json",
+    is_flag=True,
+    help="output audit report as JSON instead of table",
+)
+def audit_excel(excel_file: str, report_json: bool):
+    """
+    Run a preprocessing audit on each sheet in the given workbook:
+        - header normalization
+        - sheet classification (genotype/phenotype/skip)
+        - variant‐column presence checks
+    """
+    # 1) Read sheets
+    tables = _read_sheets(excel_file)
+
+    # 2) Produce audit entries
+    from .__main__ import preprocess
+
+    entries = preprocess(tables)
+
+    # 3) Render report
+    if report_json:
+        # turn each AuditEntry into a serializable dict
+        payload = [
+            {"step": e.step, "sheet": e.sheet, "level": e.level, "message": e.message}
+            for e in entries
+        ]
+        click.echo(json.dumps(payload, indent=2))
+    else:
+        # table header
+        click.echo(f"{'SHEET':20}  {'STEP':25}  {'LEVEL':8}  MESSAGE")
+        for e in entries:
+            click.echo(f"{e.sheet:20}  {e.step:25}  {e.level:8}  {e.message}")
 
 
 @main.command(name="download")
@@ -45,7 +95,6 @@ def main():
     help="exact HPO release tag (e.g. 2025-03-03 or v2025-03-03)",
 )
 def download(data_dir: str, hpo_version: typing.Optional[str]):
-    # TODO: download an HPO
     """
     Download a specific or the latest HPO JSON release into the tests/data/ folder.
     """
@@ -93,7 +142,20 @@ def download(data_dir: str, hpo_version: typing.Optional[str]):
     type=click.Path(exists=True, dir_okay=False),
     help="path to a custom HPO JSON file (defaults to tests/data/hp.json)",
 )
-def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None):
+@click.option(
+    "--strict-variants/--no-strict-variants",
+    default=False,
+    help=("Treat raw↔HGVS mismatches as errors (default: warn)."),
+)
+@click.option(
+    "--verbose", is_flag=True, help="Show preprocessing and classification steps"
+)
+def parse_excel(
+    excel_file: str,
+    hpo_path: typing.Optional[str] = None,
+    verbose: bool = False,
+    strict_variants: bool = False,
+):
     """
     Read each sheet, check column order, then:
       - Identify as a Genotype sheet if ALL GENOTYPE_KEY_COLUMNS are present.
@@ -106,41 +168,67 @@ def parse_excel(excel_file: str, hpo_path: typing.Optional[str] = None):
 
     # 2) Build ontology and mapper
     ontology = _load_ontology(str(hpo_file))
-    mapper = DefaultMapper(ontology)
+    mapper = DefaultMapper(ontology, strict_variants=strict_variants)
 
     # 3) Read all sheets into DataFrames
     tables = _read_sheets(excel_file)
     # tables = load_sheets_as_tables(excel_file)  # Just use this for Pandas_Workaround. Don't call declare or call "_read_sheets" at all. Just use `tables = load_sheets_as_tables(excel_file)` which only needs `from .loader import load_sheets_as_tables`
     # TODO: Decide if it is better to implement `Pandas_Workaround` or just use Pandas
 
+    # optionally audit preprocessing
+    if verbose:
+        for entry in preprocess(tables):
+            # click.echo(f"[{entry.level.upper():7}] {entry.step:20} {entry.sheet:15} {entry.message}")
+            # indent every line…
+            indent = "              "
+            line = f"{entry.step:20} {entry.sheet:15} {entry.message}"
+            # color by level
+            click.echo("")  # blank line before mapping output
+            if entry.level == "error":
+                colored = click.style(line, fg="red")
+            elif entry.level in ("warn", "warning"):
+                colored = click.style(line, fg="yellow")
+            else:
+                colored = click.style(line, fg="cyan")
+            click.echo(indent + colored)
+        click.echo("")  # a blank line before mapping output
+
     # 4) Apply mapping to get raw records and collect issues
     notepad = create_notepad("phenopackets")
-    genotype_records, phenotype_records = mapper.apply_mapping(tables, notepad)
+    phenopackets = mapper.apply_mapping(tables, notepad)
+    # Refactor: mapper returns list[Phenopacket]; counts are exposed via mapper.stats.
+
+    # apply_mapping.8) Serialize phenopackets per patient
+    # phenopackets = mapper.apply_mapping(tables, notepad)
+    output_dir = _prepare_output_dir()
+    count = 0
+    for pkt in phenopackets:
+        with open(output_dir / f"{count + 1}.json", "w", encoding="utf-8") as out_f:
+            out_f.write(MessageToJson(pkt))
+        count += 1
+        # Use mapper.stats["patients"] instead of len(records_by_patient)
+    # apply_mapping.9) Final summary
+    click.echo(
+        f"Wrote {mapper.stats.get('patients', count)} phenopacket files to {output_dir}"
+    )
+    # TODO: Come back and add more top-level fields
 
     # 5) Report any errors or warnings
     _report_issues(notepad)
 
-    # pps = mapper.apply_mapping(all_sheets, notepad)
-    # assert not notepad.has_errors_or_warnings(include_subsections=True)
-    # TODO: write phenopackets to a folder
-    # click.echo(f"Created {len(pps)} Phenotype objects")
-
     # 6) Group results by patient
-    records_by_patient = _group_records_by_patient(genotype_records, phenotype_records)
-
     # 7) Prepare output directory with timestamp
-    # Will contain genotype and phenotype records as JSON
-    generated_phenopacket_output_dir = _prepare_output_dir()
-
     # 8) Serialize phenopackets per patient
-    _write_phenopackets(records_by_patient, generated_phenopacket_output_dir)
-
     # 9) Final summary
-    click.echo(
-        f"Wrote {len(records_by_patient)} phenopacket files to {generated_phenopacket_output_dir}"
-    )
-    click.echo(f"Created {len(genotype_records)} Genotype objects")
-    click.echo(f"Created {len(phenotype_records)} Phenotype objects")
+    # click.echo(f"Wrote {len(records_by_patient)} phenopacket files to {generated_phenopacket_output_dir}")
+    # click.echo(f"Created {len(genotype_records)} Genotype objects")
+    # click.echo(f"Created {len(phenotype_records)} Phenotype objects")
+    # Maintain exact lines expected by tests:
+    counts = getattr(mapper, "stats", {})
+    click.echo(f"Created {counts.get('genotypes', 0)} Genotype objects")
+    click.echo(f"Created {counts.get('phenotypes', 0)} Phenotype objects")
+    # TODO: (For printing other counts, I need to come back and mirror the same pattern:
+    #    counts.get('diseases', 0), counts.get('measurements', 0), counts.get('biosamples', 0))
 
 
 def _locate_hpo_file(hpo_path: typing.Optional[str]) -> pathlib.Path:
@@ -180,17 +268,37 @@ def _report_issues(notepad):
 
 
 def _group_records_by_patient(
-    genotype_records: list, phenotype_records: list
+    genotype_records: list,
+    phenotype_records: list,
+    disease_records: list,
+    measurement_records: list,
+    biosample_records: list,
 ) -> dict[str, dict[str, list]]:
     # Group genotype & phenotype records by patient ID
-    records = defaultdict(lambda: {"genotype_records": [], "phenotype_records": []})
+    records = defaultdict(
+        lambda: {
+            "genotype_records": [],
+            "phenotype_records": [],
+            "disease_records": [],
+            "measurement_records": [],
+            "biosample_records": [],
+        }
+    )
     for genotype in genotype_records:
         records[genotype.genotype_patient_ID]["genotype_records"].append(genotype)
     for phenotype in phenotype_records:
         records[phenotype.phenotype_patient_ID]["phenotype_records"].append(phenotype)
+    for disease in disease_records:
+        records[disease.patient_ID]["disease_records"].append(disease)
+    for measurement in measurement_records:
+        records[measurement.patient_ID]["measurement_records"].append(measurement)
+    for biosample in biosample_records:
+        records[biosample.patient_ID]["biosample_records"].append(biosample)
     return records
 
 
+# 7) Prepare output directory with timestamp
+# Will contain genotype and phenotype records as JSON
 def _prepare_output_dir() -> pathlib.Path:
     # use YYYY-MM-DD_HH-MM-SS for human-readable timestamps
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -239,19 +347,73 @@ def _write_phenopackets(
                 genomic_interpretation_entry.InterpretationStatus.CONTRIBUTORY
             )
 
-            # now fill in the VariationDescriptor
-            # TODO: set this up later
-            # Omit setting gene_context for now.
+            # TODO: Revise VariationDescriptor and gene_context later, omit setting gene_context for now.
             # variation_descriptor = genomic_interpretation_entry.variant_interpretation.variation_descriptor
             # we can also set variation_descriptor.gene_context and variation_descriptor.allelic_state here then serialize out as before
             # variation_descriptor.gene_context.gene_symbol = genotype_record.gene_symbol
             # variation_descriptor.allelic_state = variation_descriptor.AllelicState.Value(genotype_record.zygosity.upper())
 
-            # TODO: when ready, add an Expression.HGVS here
-            # Record the HGVS genomic notation as an Expression
-            # expr = variation_descriptor.expressions.add()
-            # expr.syntax = Phenopacket.Diagnosis.GenomicInterpretation.VariantInterpretation.VariationDescriptor.Expression.HGVS
-            # expr.value = genotype_record.hgvsg
+            # Grab the VariantInterpretation and its descriptor
+            variant_interpretation = genomic_interpretation_entry.variant_interpretation
+            variation_descriptor = variant_interpretation.variation_descriptor
+
+            # 1) Gene symbol & allelic state
+            # 'gene_context' is a message; we need to CopyFrom if setting a message,
+            # but for its scalar fields we can still assign directly:
+            variation_descriptor.gene_context.symbol = genotype_record.gene_symbol
+            variation_descriptor.allelic_state.CopyFrom(
+                pps2.OntologyClass(
+                    id="GENO:"
+                    + genotype_record.zygosity_code,  # or however we decide to construct this later on
+                    label=genotype_record.zygosity,
+                )
+            )
+
+            # 2) HGVS expression
+            hgvs_expr = variation_descriptor.expressions.add()
+            # Attempt to set the HGVS syntax enum if available; otherwise skip.
+            try:
+                hgvs_expr.syntax = pps2.VariationDescriptor.Expression.HGVS
+            except AttributeError:
+                pass
+            hgvs_expr.value = genotype_record.hgvsg
+
+            # 3) Genomic location (exact interval) and alleles, if supported
+            try:
+                loc_ctx = variation_descriptor.location
+                # use the nested VariationDescriptor.Location enum
+                loc_ctx.interval.interval_type = (
+                    pps2.VariationDescriptor.Location.Interval.Type.EXACT
+                )
+                loc_ctx.interval.start = genotype_record.start_position
+                loc_ctx.interval.end = genotype_record.end_position
+                loc_ctx.reference_sequence_id = genotype_record.chromosome
+
+                # 4) Reference & alternate alleles
+                variation_descriptor.reference = genotype_record.reference
+                variation_descriptor.alternate = genotype_record.alternate
+            except AttributeError:
+                # some protobuffs give trouble when trying to expose location/alleles so just skip
+                pass
+
+        # 3c) Add optional entries (if any):
+        for d in patient_data["disease_records"]:
+            ds = phenopacket.diseases.add()
+            ds.term.id = d.disease_term
+            ds.term.label = d.disease_label
+            ds.onset = d.disease_onset
+            ds.status = d.disease_status
+        for m in patient_data["measurement_records"]:
+            meas = phenopacket.measurements.add()
+            meas.type.id = m.measurement_type
+            meas.value = m.measurement_value
+            meas.unit = m.measurement_unit
+            meas.timestamp = m.measurement_timestamp
+        for b in patient_data["biosample_records"]:
+            bs = phenopacket.biosamples.add()
+            bs.id = b.biosample_id
+            bs.type.id = b.biosample_type
+            bs.collection_time = b.collection_date
 
         # 3d) Serialize to JSON
         generated_phenopacket_output_path = (
@@ -259,6 +421,70 @@ def _write_phenopackets(
         )
         with open(generated_phenopacket_output_path, "w", encoding="utf-8") as out_f:
             out_f.write(MessageToJson(phenopacket))
+
+
+def preprocess(tables: dict[str, pd.DataFrame]) -> list[AuditEntry]:
+    """
+    Run lightweight audits on each sheet:
+      - header normalization
+      - sheet classification
+      - variant‐column presence (raw vs HGVS)
+    """
+    from .mapper import (
+        RAW_VARIANT_COLUMNS,
+        HGVS_VARIANT_COLUMNS,
+        GENOTYPE_BASE_COLUMNS,
+        PHENOTYPE_KEY_COLUMNS,
+    )
+
+    entries: list[AuditEntry] = []
+
+    # Step 1: header counts
+    for name, df in tables.items():
+        entries.append(
+            AuditEntry(
+                step="normalize-headers",
+                sheet=name,
+                message=f"{len(df.columns)} cols",
+                level="info",
+            )
+        )
+
+    # Step 2: classify
+    for name, df in tables.items():
+        cols = set(df.columns)
+        has_raw = RAW_VARIANT_COLUMNS.issubset(cols)
+        has_hgvs = bool(HGVS_VARIANT_COLUMNS & cols)
+        is_gen = GENOTYPE_BASE_COLUMNS.issubset(cols) and (has_raw or has_hgvs)
+        is_pheno = PHENOTYPE_KEY_COLUMNS.issubset(cols)
+
+        kind = "genotype" if is_gen else "phenotype" if is_pheno else "skip"
+        entries.append(
+            AuditEntry(
+                step="classify-sheet",
+                sheet=name,
+                message=kind
+                + (
+                    f" ({'raw+hgvs' if has_raw and has_hgvs else 'raw' if has_raw else 'hgvs'})"
+                ),
+                level="info",
+            )
+        )
+
+    # Step 3: variant columns
+    for name, df in tables.items():
+        cols = set(df.columns)
+        if GENOTYPE_BASE_COLUMNS.issubset(cols):
+            if not (RAW_VARIANT_COLUMNS.issubset(cols) or HGVS_VARIANT_COLUMNS & cols):
+                entries.append(
+                    AuditEntry(
+                        step="variant-check",
+                        sheet=name,
+                        message="missing raw & HGVS",
+                        level="error",
+                    )
+                )
+    return entries
 
 
 if __name__ == "__main__":

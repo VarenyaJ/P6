@@ -1,7 +1,7 @@
 # P6
 **Peter's Parse and Processing of Prenatal Particulars via Pandas**
 
-A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing genotype/phenotype Excel workbooks, and producing [GA4GH Phenopackets](https://phenopacket-schema.readthedocs.io/en/latest/schema.html#version-2-0) as specified [here](https://phenopacket-schema.readthedocs.io/_/downloads/en/stable/pdf/).
+A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing genotype/phenotype Excel workbooks, and producing [GA4GH Phenopackets](https://phenopacket-schema.readthedocs.io/en/latest/schema.html#version-2-0) as specified [here](https://phenopacket-schema.readthedocs.io/_/downloads/en/stable/pdf/). This project enables downloading the latest or specified Human Phenotype Ontology (HPO) JSON release, auto-classifying Excel sheets as genotype or phenotype data, normalizing column names and HPO IDs, and writing one Phenopacket per record. Additional commands provide quick auditing of workbooks for header normalization, sheet classification, and required variant columns. Built for easy integration and reproducibility, P6 supports rapid phenotypic data preparation for research and clinical workflows, and runs locally with simple installation via pip. The end usage of this project is to convert an existing digital record of phenotypic data into phenopackets, such that they may be linked to their corresponding VCFs and used to integrate with a larger federated repository system.
 
 ## Table of Contents
 

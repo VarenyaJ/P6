@@ -342,12 +342,7 @@ class Genotype:
             # pyphetools primarily exposes normalization inside its TemplateImporter
             # flow (via VariantValidator). If, in a future release, a direct API
             # becomes public (e.g., pyphetools.hgvs.normalize), wire it here.
-              # noqa: F401
-            # Placeholder: no stable, documented function to call here yet.
-            # If we decide to add a thin wrapper later, plug it in:
-            #   from pyphetools.hgvs import normalize_g
-            #   return normalize_g(hgvs_g)  # hypothetical
-            import pyphetools  # noqa: F401
+            import pyphetools
             # Placeholder: no stable, documented function to call here yet.
             return None
         except Exception:

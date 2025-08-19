@@ -348,53 +348,14 @@ def _write_phenopackets(
             )
 
             # TODO: Revise VariationDescriptor and gene_context later, omit setting gene_context for now.
-            # variation_descriptor = genomic_interpretation_entry.variant_interpretation.variation_descriptor
-            # we can also set variation_descriptor.gene_context and variation_descriptor.allelic_state here then serialize out as before
-            # variation_descriptor.gene_context.gene_symbol = genotype_record.gene_symbol
-            # variation_descriptor.allelic_state = variation_descriptor.AllelicState.Value(genotype_record.zygosity.upper())
-
-            # Grab the VariantInterpretation and its descriptor
+            # Build a complete VariationDescriptor directly from the Genotype
             variant_interpretation = genomic_interpretation_entry.variant_interpretation
-            variation_descriptor = variant_interpretation.variation_descriptor
-
-            # 1) Gene symbol & allelic state
-            # 'gene_context' is a message; we need to CopyFrom if setting a message,
-            # but for its scalar fields we can still assign directly:
-            variation_descriptor.gene_context.symbol = genotype_record.gene_symbol
-            variation_descriptor.allelic_state.CopyFrom(
-                pps2.OntologyClass(
-                    id="GENO:"
-                    + genotype_record.zygosity_code,  # or however we decide to construct this later on
-                    label=genotype_record.zygosity,
-                )
-            )
-
-            # 2) HGVS expression
-            hgvs_expr = variation_descriptor.expressions.add()
-            # Attempt to set the HGVS syntax enum if available; otherwise skip.
+            vd = genotype_record.to_variation_descriptor()
             try:
-                hgvs_expr.syntax = pps2.VariationDescriptor.Expression.HGVS
-            except AttributeError:
-                pass
-            hgvs_expr.value = genotype_record.hgvsg
-
-            # 3) Genomic location (exact interval) and alleles, if supported
-            try:
-                loc_ctx = variation_descriptor.location
-                # use the nested VariationDescriptor.Location enum
-                loc_ctx.interval.interval_type = (
-                    pps2.VariationDescriptor.Location.Interval.Type.EXACT
-                )
-                loc_ctx.interval.start = genotype_record.start_position
-                loc_ctx.interval.end = genotype_record.end_position
-                loc_ctx.reference_sequence_id = genotype_record.chromosome
-
-                # 4) Reference & alternate alleles
-                variation_descriptor.reference = genotype_record.reference
-                variation_descriptor.alternate = genotype_record.alternate
-            except AttributeError:
-                # some protobuffs give trouble when trying to expose location/alleles so just skip
-                pass
+                variant_interpretation.variation_descriptor.CopyFrom(vd)
+            except Exception:
+                # Fallback: if CopyFrom is not present in a given build, set fields manually
+                variant_interpretation.variation_descriptor.MergeFrom(vd)  # type: ignore[attr-defined]
 
         # 3c) Add optional entries (if any):
         for d in patient_data["disease_records"]:

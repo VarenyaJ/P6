@@ -836,11 +836,12 @@ class DefaultMapper(TableMapper):
                 feature.excluded = True
 
     @staticmethod
+    @staticmethod
     def _add_genotype_interpretations(pkt, genotypes: list, patient_id: str) -> None:
         """
         Add Interpretation → Diagnosis → GenomicInterpretation blocks.
-        Minimal VariationDescriptor with HGVS expression; set optional
-        location/alleles when supported by the installed protobufs.
+        Use the Genotype dataclass helper to build VariationDescriptor,
+        so gene symbol / zygosity / inheritance are preserved.
         """
 
         for interpretation_index, genotype_record in enumerate(genotypes):
@@ -856,38 +857,25 @@ class DefaultMapper(TableMapper):
                 genomic_interpretation_entry.InterpretationStatus.CONTRIBUTORY
             )
 
-            # VariationDescriptor with HGVS expression
+            # VariationDescriptor: delegate to Genotype dataclass
             variant_interpretation = genomic_interpretation_entry.variant_interpretation
             variation_descriptor = variant_interpretation.variation_descriptor
 
-            expression = variation_descriptor.expressions.add()
-            # Attempt to set the HGVS syntax enum if available
             try:
-                expression.syntax = pps2.VariationDescriptor.Expression.HGVS
-            except AttributeError:
-                pass
-            # expression.value = genotype_record.hgvsg or ""
-            # Canonicalize: serialize without optional 'chr' prefix so it matches
-            # expected '16:g.100A>G' style while still accepting either form as input.
-            hgvs = (genotype_record.hgvsg or "").strip()
-            if hgvs.lower().startswith("chr"):
-                hgvs = hgvs[3:]
-            expression.value = hgvs
-
-            # Optional: attempt to set a subset of location/alleles if supported
-            try:
-                location_context = variation_descriptor.location
-                location_context.interval.interval_type = (
-                    pps2.VariationDescriptor.Location.Interval.Type.EXACT
+                variation_descriptor.CopyFrom(
+                    genotype_record.to_variation_descriptor()
                 )
-                location_context.interval.start = genotype_record.start_position
-                location_context.interval.end = genotype_record.end_position
-                location_context.reference_sequence_id = genotype_record.chromosome
-                variation_descriptor.reference = genotype_record.reference
-                variation_descriptor.alternate = genotype_record.alternate
             except AttributeError:
-                # Some library builds do not expose these submessages; skip gracefully.
-                pass
+                # Fallback to old behavior if helper not available
+                expression = variation_descriptor.expressions.add()
+                try:
+                    expression.syntax = pps2.VariationDescriptor.Expression.HGVS
+                except AttributeError:
+                    pass
+                hgvs = (genotype_record.hgvsg or "").strip()
+                if hgvs.lower().startswith("chr"):
+                    hgvs = hgvs[3:]
+                expression.value = hgvs
 
     @staticmethod
     def _add_diseases_to_packet(pkt, diseases: list) -> None:

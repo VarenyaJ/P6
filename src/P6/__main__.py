@@ -18,7 +18,6 @@ from datetime import datetime
 from google.protobuf.json_format import MessageToJson
 from stairval.notepad import create_notepad
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
-import phenopackets.schema.v2 as pps2
 
 from .loader import load_sheets_as_tables
 from .mapper import DefaultMapper
@@ -237,6 +236,8 @@ def _locate_hpo_file(hpo_path: typing.Optional[str]) -> pathlib.Path:
         hpo_file = pathlib.Path(hpo_path)
     else:
         hpo_file = pathlib.Path("tests/data") / "hp.json"
+    # Explicit file check avoids try/except (Ruff BLE001) while providing clear error flow.
+    # More efficient than catching an IOError later because we fail fast and early.
     if not hpo_file.is_file():
         click.echo(f"Error: HPO file not found at {hpo_file}", err=True)
         sys.exit(1)
@@ -347,14 +348,20 @@ def _write_phenopackets(
                 genomic_interpretation_entry.InterpretationStatus.CONTRIBUTORY
             )
 
-            # TODO: Revise VariationDescriptor and gene_context later, omit setting gene_context for now.
+            # TODO: Revise VariationDescriptor and gene_context
             # Build a complete VariationDescriptor directly from the Genotype
-            variant_interpretation = genomic_interpretation_entry.variant_interpretation
+
+            # Build a complete VariationDescriptor directly from the Genotype
             vd = genotype_record.to_variation_descriptor()
-            try:
-                variant_interpretation.variation_descriptor.CopyFrom(vd)
-            except Exception:
-                # Fallback: if CopyFrom is not present in a given build, set fields manually
+            variant_interpretation = genomic_interpretation_entry.variant_interpretation
+            # Prefer CopyFrom when available (protobuf Message API) to avoid Ruff BLE001 (broad exception). Feature-detecting keeps us compatible with protobuf builds where CopyFrom may or may not exist on the generated message class, without catching a blanket Exception
+            copy_from = getattr(
+                variant_interpretation.variation_descriptor, "CopyFrom", None
+            )
+            if callable(copy_from):
+                copy_from(vd)
+            else:
+                # Fallback when CopyFrom is absent: MergeFrom retains the previous behavior without catching a blanket Exception
                 variant_interpretation.variation_descriptor.MergeFrom(vd)  # type: ignore[attr-defined]
 
         # 3c) Add optional entries (if any):

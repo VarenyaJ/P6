@@ -862,9 +862,7 @@ class DefaultMapper(TableMapper):
             variation_descriptor = variant_interpretation.variation_descriptor
 
             try:
-                variation_descriptor.CopyFrom(
-                    genotype_record.to_variation_descriptor()
-                )
+                variation_descriptor.CopyFrom(genotype_record.to_variation_descriptor())
             except AttributeError:
                 # Fallback to old behavior if helper not available
                 expression = variation_descriptor.expressions.add()

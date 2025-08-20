@@ -18,7 +18,6 @@ from datetime import datetime
 from google.protobuf.json_format import MessageToJson
 from stairval.notepad import create_notepad
 from phenopackets.schema.v2.phenopackets_pb2 import Phenopacket
-import phenopackets.schema.v2 as pps2
 
 from .loader import load_sheets_as_tables
 from .mapper import DefaultMapper
@@ -237,6 +236,8 @@ def _locate_hpo_file(hpo_path: typing.Optional[str]) -> pathlib.Path:
         hpo_file = pathlib.Path(hpo_path)
     else:
         hpo_file = pathlib.Path("tests/data") / "hp.json"
+    # Explicit file check avoids try/except (Ruff BLE001) while providing clear error flow.
+    # More efficient than catching an IOError later because we fail fast and early.
     if not hpo_file.is_file():
         click.echo(f"Error: HPO file not found at {hpo_file}", err=True)
         sys.exit(1)
@@ -347,54 +348,21 @@ def _write_phenopackets(
                 genomic_interpretation_entry.InterpretationStatus.CONTRIBUTORY
             )
 
-            # TODO: Revise VariationDescriptor and gene_context later, omit setting gene_context for now.
-            # variation_descriptor = genomic_interpretation_entry.variant_interpretation.variation_descriptor
-            # we can also set variation_descriptor.gene_context and variation_descriptor.allelic_state here then serialize out as before
-            # variation_descriptor.gene_context.gene_symbol = genotype_record.gene_symbol
-            # variation_descriptor.allelic_state = variation_descriptor.AllelicState.Value(genotype_record.zygosity.upper())
+            # TODO: Revise VariationDescriptor and gene_context
+            # Build a complete VariationDescriptor directly from the Genotype
 
-            # Grab the VariantInterpretation and its descriptor
+            # Build a complete VariationDescriptor directly from the Genotype
+            vd = genotype_record.to_variation_descriptor()
             variant_interpretation = genomic_interpretation_entry.variant_interpretation
-            variation_descriptor = variant_interpretation.variation_descriptor
-
-            # 1) Gene symbol & allelic state
-            # 'gene_context' is a message; we need to CopyFrom if setting a message,
-            # but for its scalar fields we can still assign directly:
-            variation_descriptor.gene_context.symbol = genotype_record.gene_symbol
-            variation_descriptor.allelic_state.CopyFrom(
-                pps2.OntologyClass(
-                    id="GENO:"
-                    + genotype_record.zygosity_code,  # or however we decide to construct this later on
-                    label=genotype_record.zygosity,
-                )
+            # Prefer CopyFrom when available (protobuf Message API) to avoid Ruff BLE001 (broad exception). Feature-detecting keeps us compatible with protobuf builds where CopyFrom may or may not exist on the generated message class, without catching a blanket Exception
+            copy_from = getattr(
+                variant_interpretation.variation_descriptor, "CopyFrom", None
             )
-
-            # 2) HGVS expression
-            hgvs_expr = variation_descriptor.expressions.add()
-            # Attempt to set the HGVS syntax enum if available; otherwise skip.
-            try:
-                hgvs_expr.syntax = pps2.VariationDescriptor.Expression.HGVS
-            except AttributeError:
-                pass
-            hgvs_expr.value = genotype_record.hgvsg
-
-            # 3) Genomic location (exact interval) and alleles, if supported
-            try:
-                loc_ctx = variation_descriptor.location
-                # use the nested VariationDescriptor.Location enum
-                loc_ctx.interval.interval_type = (
-                    pps2.VariationDescriptor.Location.Interval.Type.EXACT
-                )
-                loc_ctx.interval.start = genotype_record.start_position
-                loc_ctx.interval.end = genotype_record.end_position
-                loc_ctx.reference_sequence_id = genotype_record.chromosome
-
-                # 4) Reference & alternate alleles
-                variation_descriptor.reference = genotype_record.reference
-                variation_descriptor.alternate = genotype_record.alternate
-            except AttributeError:
-                # some protobuffs give trouble when trying to expose location/alleles so just skip
-                pass
+            if callable(copy_from):
+                copy_from(vd)
+            else:
+                # Fallback when CopyFrom is absent: MergeFrom retains the previous behavior without catching a blanket Exception
+                variant_interpretation.variation_descriptor.MergeFrom(vd)  # type: ignore[attr-defined]
 
         # 3c) Add optional entries (if any):
         for d in patient_data["disease_records"]:

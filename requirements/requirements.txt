@@ -1,8 +1,10 @@
 click==8.2.1
-hpo-toolkit==0.7.0
+#hpo-toolkit==0.7.0
+hpo-toolkit==0.5.5
 pandas==2.3.1
 phenopackets==2.0.2.post4
 protobuf==3.20.3
 openpyxl==3.1.5
 requests==2.32.4
 stairval==0.2.1
+pyphetools==0.9.118

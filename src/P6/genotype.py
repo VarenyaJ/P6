@@ -212,7 +212,7 @@ class Genotype:
             hv = validator.encode_hgvs(c_part)
             vi = hv.to_variant_interpretation_202()
             vd = vi.variation_descriptor
-        except requests.RequestException as exc:
+        except requests.RequestException:
             # Network/HTTP issues: keep runs resilient by falling back
             return self._build_local_vd()
         except (ValueError, TypeError, KeyError):
@@ -228,9 +228,11 @@ class Genotype:
         # Gene context (if missing)
         try:
             gene_ctx = getattr(vd, "gene_context", None)
-            if self.gene_symbol and (gene_ctx is None or not getattr(gene_ctx, "symbol", "")):
+            if self.gene_symbol and (
+                gene_ctx is None or not getattr(gene_ctx, "symbol", "")
+            ):
                 vd.gene_context.symbol = self.gene_symbol
-        except Exception:
+        except (AttributeError, ValueError, TypeError):
             # Don't let proto accessors sink the run
             pass
 
@@ -304,10 +306,8 @@ class Genotype:
         if self.gene_symbol:
             try:
                 vd.gene_context.symbol = self.gene_symbol
-            except Exception:
+            except (AttributeError, ValueError, TypeError):
                 pass
-
-        return vd
 
     @staticmethod
     def _add_hgvs_expression(

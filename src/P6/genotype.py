@@ -18,7 +18,7 @@ Two-path strategy for variation building
 
 Environment flags (developer ergonomics)
 ----------------------------------------
-P6_SKIP_VV=1         : Force the local fallback path (useful for CI/offline).
+P6_SKIP_VV=1           : Force the local fallback path (useful for CI/offline).
 P6_ENRICH_GENE_XREFS=1 : If set and vv_lookup is importable, ask VV for HGNC/
                          Ensembl IDs and add them to gene_context where possible.
 """
@@ -192,69 +192,20 @@ class Genotype:
         2) Else try VariantValidator with (transcript, c. part) parsed from hgvsc.
            On success, adapt & enrich; on VV errors, fall back locally.
         """
-        # 1) Global opt-out (CI/offline usage)
-        if os.getenv("P6_SKIP_VV", "").strip() in {"1", "true", "TRUE"}:
+        if self._should_skip_vv():
             return self._build_local_descriptor()
 
-        # 2) Try VV using transcript+c. parsed from hgvsc
         tx, c_part = self._parse_hgvsc(self.hgvsc)
         if not (tx and c_part):
-            # Can't call VV without a transcript+c. → use local path
             return self._build_local_descriptor()
 
-        try:
-            validator = VariantValidator(genome_build="GRCh38", transcript=tx)
-            hgvs_variant = validator.encode_hgvs(c_part)         # VV call
-            var_interp = hgvs_variant.to_variant_interpretation_202()
-            variation_descriptor = var_interp.variation_descriptor
-        except requests.RequestException:
-            # Network/HTTP hiccup: keep CLI/tests resilient
-            return self._build_local_descriptor()
-        except (ValueError, TypeError, KeyError):
-            # pyphetools raised (e.g., VV returned 'warning' or odd JSON)
-            return self._build_local_descriptor()
+        vd = self._try_build_descriptor_via_vv(tx, c_part)
+        if vd is None:
+            vd = self._build_local_descriptor()
 
-        # Enrich: allelic state (zygosity)
-        if self.zygosity:
-            variation_descriptor.allelic_state.id = f"GENO:{self.zygosity_code}"
-            variation_descriptor.allelic_state.label = self.zygosity
-
-        # Enrich: gene_context symbol (if not already present)
-        try:
-            gene_ctx = getattr(variation_descriptor, "gene_context", None)
-            if self.gene_symbol and (
-                gene_ctx is None or not getattr(gene_ctx, "symbol", "")
-            ):
-                variation_descriptor.gene_context.symbol = self.gene_symbol
-        except AttributeError:
-            # Don't let proto accessors sink the run
-            pass
-
-        # Enrich: ensure we include a normalized genomic HGVS expression
-        g_value = self._normalize_g_expression(self.hgvsg)
-        if g_value:
-            self._add_hgvs_expression(variation_descriptor, g_value, syntax_name="HGVS")
-
-        # Optional enrichment: look up HGNC/Ensembl/transcripts via VV (best effort)
-        if (
-            os.getenv("P6_ENRICH_GENE_XREFS", "").strip() in {"1", "true", "TRUE"}
-            and get_gene_xrefs_vv
-            and self.gene_symbol
-        ):
-            try:
-                xrefs = get_gene_xrefs_vv(self.gene_symbol)
-                # Only set IDs if they are currently empty/missing
-                if xrefs.get("hgnc_id") and not getattr(variation_descriptor.gene_context, "id", ""):
-                    variation_descriptor.gene_context.id = xrefs["hgnc_id"]
-                # Future: attach additional identifiers (e.g., Ensembl) to extensions
-            except VVLookupError:
-                # Non-critical enrichment failed; ignore quietly
-                pass
-            except (requests.RequestException, ValueError, KeyError, TypeError):
-                # Never break the main path on enrichment problems.
-                pass
-
-        return variation_descriptor
+        self._enrich_descriptor_common(vd)
+        self._maybe_enrich_gene_xrefs(vd)
+        return vd
 
     # --------------------------------------------------------------------------
     # Internal helpers (focused, testable)
@@ -345,3 +296,74 @@ class Genotype:
         enum = getattr(type(expr), syntax_name, None)
         if enum is not None and hasattr(expr, "syntax"):
             expr.syntax = enum  # type: ignore[attr-defined]
+
+    # ---------------------------
+    # Complexity-splitting helpers
+    # ---------------------------
+
+    @staticmethod
+    def _should_skip_vv() -> bool:
+        """Return True if the P6_SKIP_VV flag is set."""
+        return os.getenv("P6_SKIP_VV", "").strip() in {"1", "true", "TRUE"}
+
+    def _try_build_descriptor_via_vv(
+        self, transcript: str, c_part: str
+    ) -> Optional["pps2.VariationDescriptor"]:
+        """
+        Attempt to build a VariationDescriptor via VariantValidator.
+
+        Returns None on network/schema errors so caller can fall back locally.
+        """
+        try:
+            validator = VariantValidator(genome_build="GRCh38", transcript=transcript)
+            hgvs_variant = validator.encode_hgvs(c_part)  # VV call
+            var_interp = hgvs_variant.to_variant_interpretation_202()
+            vd = var_interp.variation_descriptor
+            return vd
+        except requests.RequestException:
+            return None
+        except (ValueError, TypeError, KeyError):
+            return None
+
+    def _enrich_descriptor_common(self, vd: "pps2.VariationDescriptor") -> None:
+        """
+        Add common enrichments that apply to both VV and local descriptors:
+        - allelic_state (from zygosity)
+        - gene_context.symbol (if missing)
+        - normalized g. expression
+        """
+        if self.zygosity:
+            vd.allelic_state.id = f"GENO:{self.zygosity_code}"
+            vd.allelic_state.label = self.zygosity
+
+        try:
+            gene_ctx = getattr(vd, "gene_context", None)
+            if self.gene_symbol and (gene_ctx is None or not getattr(gene_ctx, "symbol", "")):
+                vd.gene_context.symbol = self.gene_symbol
+        except AttributeError:
+            pass
+
+        g_value = self._normalize_g_expression(self.hgvsg)
+        if g_value:
+            self._add_hgvs_expression(vd, g_value, syntax_name="HGVS")
+
+    def _maybe_enrich_gene_xrefs(self, vd: "pps2.VariationDescriptor") -> None:
+        """
+        Best-effort enrichment of gene_context.id with HGNC via VV gene xref API.
+
+        Controlled by P6_ENRICH_GENE_XREFS; never raises.
+        """
+        if not (
+            os.getenv("P6_ENRICH_GENE_XREFS", "").strip() in {"1", "true", "TRUE"}
+            and get_gene_xrefs_vv
+            and self.gene_symbol
+        ):
+            return
+        try:
+            xrefs = get_gene_xrefs_vv(self.gene_symbol)
+            if xrefs.get("hgnc_id") and not getattr(vd.gene_context, "id", ""):
+                vd.gene_context.id = xrefs["hgnc_id"]
+        except VVLookupError:
+            pass
+        except (requests.RequestException, ValueError, KeyError, TypeError):
+            pass

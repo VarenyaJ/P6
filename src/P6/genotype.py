@@ -46,6 +46,7 @@ except ImportError:  # pragma: no cover
 
     class VVLookupError(RuntimeError):  # type: ignore[no-redef]
         """Fallback sentinel so isinstance checks compile even if vv_lookup is absent."""
+
         pass
 
 
@@ -108,6 +109,7 @@ _HGVSC_TXT_RE = re.compile(
 # Data model
 # ==============================================================================
 
+
 @dataclass
 class Genotype:
     """
@@ -145,7 +147,9 @@ class Genotype:
 
         # Chromosome encoding (either known keyword or 'chr*')
         chrom_lower = self.chromosome.lower()
-        if not (chrom_lower in _ALLOWED_CHROM_ENCODINGS or chrom_lower.startswith("chr")):
+        if not (
+            chrom_lower in _ALLOWED_CHROM_ENCODINGS or chrom_lower.startswith("chr")
+        ):
             raise ValueError(f"Unrecognized chromosome: {self.chromosome!r}")
 
         # Positions must be non-negative ints
@@ -155,7 +159,14 @@ class Genotype:
                 raise ValueError(f"{attr} must be a non-negative integer, got {val!r}")
 
         # Non-empty strings for allele/gene/HGVS/protein
-        for attr in ("reference", "alternate", "gene_symbol", "hgvsg", "hgvsc", "hgvsp"):
+        for attr in (
+            "reference",
+            "alternate",
+            "gene_symbol",
+            "hgvsg",
+            "hgvsc",
+            "hgvsp",
+        ):
             val = getattr(self, attr)
             if not isinstance(val, str) or not val.strip():
                 raise ValueError(f"{attr} must be a nonempty string")
@@ -177,7 +188,9 @@ class Genotype:
         try:
             return _GENO_ALLELIC_STATE_CODES[self.zygosity]
         except KeyError as exc:
-            raise ValueError(f"No GENO code defined for zygosity {self.zygosity!r}") from exc
+            raise ValueError(
+                f"No GENO code defined for zygosity {self.zygosity!r}"
+            ) from exc
 
     # --------------------------------------------------------------------------
     # Core responsibility: build a VariationDescriptor (VV path or local fallback)
@@ -280,10 +293,7 @@ class Genotype:
 
     @staticmethod
     def _add_hgvs_expression(
-        vd: "pps2.VariationDescriptor",
-        value: str,
-        *,
-        syntax_name: str = "HGVS",
+        vd: "pps2.VariationDescriptor", value: str, *, syntax_name: str = "HGVS"
     ) -> None:
         """
         Append an Expression (value + syntax) to a VariationDescriptor.
@@ -338,7 +348,9 @@ class Genotype:
 
         try:
             gene_ctx = getattr(vd, "gene_context", None)
-            if self.gene_symbol and (gene_ctx is None or not getattr(gene_ctx, "symbol", "")):
+            if self.gene_symbol and (
+                gene_ctx is None or not getattr(gene_ctx, "symbol", "")
+            ):
                 vd.gene_context.symbol = self.gene_symbol
         except AttributeError:
             pass

@@ -54,6 +54,7 @@ _VV_BASE = os.getenv("VV_BASE_URL", "https://rest.variantvalidator.org").rstrip(
 # Small utilities
 # ------------------------------------------------------------------------------
 
+
 def _sleep_backoff(i: int) -> None:
     """
     Sleep using a small exponential backoff (polite to the VV API).
@@ -86,6 +87,7 @@ def _request_json(url: str, *, timeout: float = 10.0) -> dict:
 # Payload normalizers (keep public API stable even if VV changes shape)
 # ------------------------------------------------------------------------------
 
+
 def _parse_v2_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Normalize the gene2transcripts_v2 response into a compact dict.
@@ -108,7 +110,9 @@ def _parse_v2_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     hgnc = payload.get("hgnc", {})
     if isinstance(hgnc, dict):
         out["hgnc_id"] = hgnc.get("hgnc_id", "") or hgnc.get("HGNC_ID", "")
-        out["ensembl_gene_id"] = hgnc.get("ensembl_gene_id", "") or hgnc.get("ensembl", "")
+        out["ensembl_gene_id"] = hgnc.get("ensembl_gene_id", "") or hgnc.get(
+            "ensembl", ""
+        )
 
     def _collect(lst: Any) -> List[str]:
         accs: List[str] = []
@@ -156,13 +160,14 @@ def _parse_v1_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 # Public API
 # ------------------------------------------------------------------------------
 
+
 @lru_cache(maxsize=2048)
 def get_gene_xrefs_vv(
     gene_query: str,
     *,
     genome_build: str = "GRCh38",
-    transcript_set: str = "refseq",       # {refseq, ensembl, all}
-    limit_transcripts: str = "mane",      # {mane, mane_select, select, raw, all}
+    transcript_set: str = "refseq",  # {refseq, ensembl, all}
+    limit_transcripts: str = "mane",  # {mane, mane_select, select, raw, all}
 ) -> Dict[str, Any]:
     """
     Fetch HGNC, Ensembl, and transcript xrefs for an HGNC symbol/ID or transcript.

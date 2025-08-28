@@ -1,56 +1,62 @@
-# src/P6/genotype.py
 """
-Genotype domain model (P6).
+Genotype domain model and VariationDescriptor construction.
 
-P6 HIGH-LEVEL: Excel → (DefaultMapper) → domain objects (Genotype, Phenotype, …)
-→ Phenopacket protobufs → JSON files.
+High level (P6 perspective)
+---------------------------
+This module defines the Genotype record used by P6's mapper. Its main job is
+to validate raw genotype fields coming from Excel/CSV, and to convert each row
+into a GA4GH Phenopackets v2 `VariationDescriptor` that the CLI writes into
+phenopackets.
 
-This module provides the **Genotype** domain object and the logic to
-convert a row-level variant into a GA4GH **VariationDescriptor** that
-ultimately lands in a Phenopacket "interpretations" block.
+Two-path strategy for variation building
+----------------------------------------
+1) Preferred: Use `pyphetools`' VariantValidator (VV) to authenticate a
+   transcript+c. HGVS (parsed from `hgvsc`) and obtain a normalized descriptor.
+2) Fallback: If VV is unavailable, times out, or returns unexpected JSON,
+   construct a minimal local `VariationDescriptor` using the provided genomic
+   `hgvsg`, the gene symbol, and the zygosity → GENO allelic_state mapping.
 
-INTEGRATION STRATEGY (NETWORK-AWARE):
-- Preferred path: use pyphetools' VariantValidator client to normalize
-  the c. description (transcript-scoped), then adapt to a VariationDescriptor.
-- Resilience: if VariantValidator is disabled or unavailable, fall back to a
-  locally constructed VariationDescriptor using our provided g. notation.
-- Optional enrichment: when enabled, augment gene_context with HGNC/Ensembl IDs.
-
-ENV FLAGS:
-- P6_SKIP_VV=1|true     → skip VariantValidator path, always use local fallback
-- P6_ENRICH_GENE_XREFS=1|true → try to enrich gene_context via vv_lookup (HGNC/ENSG)
+Environment flags (developer ergonomics)
+----------------------------------------
+P6_SKIP_VV=1         : Force the local fallback path (useful for CI/offline).
+P6_ENRICH_GENE_XREFS=1 : If set and vv_lookup is importable, ask VV for HGNC/
+                         Ensembl IDs and add them to gene_context where possible.
 """
 
 from __future__ import annotations
 
-# =============================================================================
-# [P6 SECTION] Imports & module-wide constants
-# -----------------------------------------------------------------------------
-# Why: Keep dependencies explicit; define regex patterns and enumerations used
-#       across validation and construction paths.
-# =============================================================================
+# ---------------------------
+# Imports
+# ---------------------------
 
 import os
 import re
-import requests  # network exception handling—even if VV is skipped
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+import requests
 import phenopackets.schema.v2 as pps2
 from pyphetools.creation.variant_validator import VariantValidator
 
-# Optional: VV gene cross-ref enrichment (behind P6_ENRICH_GENE_XREFS)
+# vv_lookup is optional; code must work without it.
 try:
     from .vv_lookup import get_gene_xrefs_vv, VVLookupError  # type: ignore
-except Exception:  # pragma: no cover
-    get_gene_xrefs_vv = None           # type: ignore[assignment]
-    VVLookupError = Exception          # type: ignore[assignment]
+except ImportError:  # pragma: no cover
+    get_gene_xrefs_vv = None  # type: ignore[assignment]
 
-# --------------------------- Patterns and allowed enums -----------------------
+    class VVLookupError(RuntimeError):  # type: ignore[no-redef]
+        """Fallback sentinel so isinstance checks compile even if vv_lookup is absent."""
+        pass
+
+
+# ---------------------------
+# Validation patterns & enums
+# ---------------------------
 
 _VALID_ID = re.compile(r"^[A-Za-z0-9]+$")
 _EMAIL_PATTERN = re.compile(r"^[\w\.\+\-]+@[\w\.\-]+\.[A-Za-z]+$")
 _ALLOWED_CHROM_ENCODINGS = {"hgvs", "ucsc", "refseq", "ensembl", "ncbi", "ega"}
+
 _ALLOWED_ZYGOSITIES = {
     "compound_heterozygosity",
     "homozygous",
@@ -58,9 +64,10 @@ _ALLOWED_ZYGOSITIES = {
     "hemizygous",
     "mosaic",
 }
+
 _ALLOWED_INHERITANCE_MODES = {"unknown", "inherited", "de_novo_mutation"}
 
-# Mapping from normalized zygosity terms to GENO allelic_state codes (numeric tail)
+# zygosity → GENO allelic_state (numeric suffix)
 _GENO_ALLELIC_STATE_CODES = {
     "heterozygous": "0000135",
     "homozygous": "0000134",
@@ -69,7 +76,7 @@ _GENO_ALLELIC_STATE_CODES = {
     "mosaic": "0000150",
 }
 
-# HGVS g. (SNV) with optional "chr" prefix: captures chromosome, position, ref, alt
+# Permissive HGVS g. SNV regex (optional 'chr' prefix).
 _HGVS_G_SNV = re.compile(
     r"""
     ^\s*
@@ -82,13 +89,13 @@ _HGVS_G_SNV = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-# Transcript + c. part, e.g., "NM_000000.0:c.100A>G", "ENST00000205557.12:c.2428G>A"
+# Transcript + c. component, e.g., "NM_000000.0:c.100A>G" or "ENST00000205557.12:c.2428G>A"
 _HGVSC_TXT_RE = re.compile(
     r"""
     ^\s*
     (?P<tx>
-        (?:N[MR]|X[MR]|E(?:NST)?)      # NM/NR/XM/XR/ENST (and tolerant of ENST prefix)
-        [_]?\d+(?:\.\d+)?              # identifier with optional dot-version
+        (?:N[MR]|X[MR]|E(?:NST)?)      # NM/NR/XM/XR/ENST
+        [_]?\d+(?:\.\d+)?              # id with optional dot-version
     )
     :
     (?P<c>c\..+)$
@@ -97,50 +104,20 @@ _HGVSC_TXT_RE = re.compile(
 )
 
 
-# =============================================================================
-# [P6 SECTION] Genotype domain object
-# -----------------------------------------------------------------------------
-# Why: Represents a single row-level variant call; carries raw input fields and
-#       provides conversion to a GA4GH VariationDescriptor.
-# =============================================================================
+# ==============================================================================
+# Data model
+# ==============================================================================
 
 @dataclass
 class Genotype:
     """
-    A single genomic variant call for a patient (row-level abstraction).
+    A single genomic variant call plus minimal context.
 
-    Attributes
-    ----------
-    genotype_patient_ID : str
-        Unique alphanumeric patient identifier (Propagates to Phenopacket.subject.id).
-    contact_email : str
-        Email used for traceability or follow-up.
-    phasing : bool
-        Whether this call is phased (mapper-level semantics).
-    chromosome : str
-        Chromosome name or encoding (e.g., "chr16" or "hgvs" keyword).
-    start_position : int
-        1-based start coordinate (non-negative).
-    end_position : int
-        1-based end coordinate (non-negative).
-    reference : str
-        Reference allele sequence.
-    alternate : str
-        Alternate allele sequence.
-    gene_symbol : str
-        HGNC gene symbol (e.g., "BRCA1", "ABCC6").
-    hgvsg : str
-        Genomic HGVS (e.g., "16:g.16177614C>T" or "chr16:g.16177614C>T").
-    hgvsc : str
-        Transcript-scoped HGVS c. (e.g., "NM_000000.0:c.100A>G").
-    hgvsp : str
-        Protein HGVS p. (optional for construction; retained for display/reporting).
-    zygosity : str
-        One of: heterozygous, homozygous, compound_heterozygosity, hemizygous, mosaic.
-    inheritance : str
-        One of: unknown, inherited, de_novo_mutation.
+    The fields mirror the genotype sheet columns; `to_variation_descriptor()`
+    converts this record into a GA4GH VariationDescriptor for phenopackets.
     """
 
+    # Raw columns (as parsed by the mapper)
     genotype_patient_ID: str
     contact_email: str
     phasing: bool
@@ -156,234 +133,215 @@ class Genotype:
     zygosity: str
     inheritance: str
 
-    # -------------------------------------------------------------------------
-    # [P6 SUBSECTION] Input validation (constructor-time)
-    # Why: Fail-fast on malformed input to keep downstream construction simple.
-    # -------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+    # Input validation (ensures downstream code can rely on sane types/shapes)
+    # --------------------------------------------------------------------------
     def __post_init__(self) -> None:
-        # Patient ID
+        # IDs and email
         if not _VALID_ID.match(self.genotype_patient_ID):
             raise ValueError(f"Invalid patient ID: {self.genotype_patient_ID!r}")
-
-        # Email
         if not _EMAIL_PATTERN.match(self.contact_email):
             raise ValueError(f"Invalid contact email: {self.contact_email!r}")
 
-        # Chromosome encoding or 'chr*'
+        # Chromosome encoding (either known keyword or 'chr*')
         chrom_lower = self.chromosome.lower()
-        if not (
-            chrom_lower in _ALLOWED_CHROM_ENCODINGS or chrom_lower.startswith("chr")
-        ):
+        if not (chrom_lower in _ALLOWED_CHROM_ENCODINGS or chrom_lower.startswith("chr")):
             raise ValueError(f"Unrecognized chromosome: {self.chromosome!r}")
 
-        # Coordinates
-        for attr_name in ("start_position", "end_position"):
-            value = getattr(self, attr_name)
-            if not isinstance(value, int) or value < 0:
-                raise ValueError(f"{attr_name} must be a non-negative integer, got {value!r}")
+        # Positions must be non-negative ints
+        for attr in ("start_position", "end_position"):
+            val = getattr(self, attr)
+            if not isinstance(val, int) or val < 0:
+                raise ValueError(f"{attr} must be a non-negative integer, got {val!r}")
 
-        # Required strings
-        for attr_name in ("reference", "alternate", "gene_symbol", "hgvsg", "hgvsc", "hgvsp"):
-            value = getattr(self, attr_name)
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{attr_name} must be a nonempty string")
+        # Non-empty strings for allele/gene/HGVS/protein
+        for attr in ("reference", "alternate", "gene_symbol", "hgvsg", "hgvsc", "hgvsp"):
+            val = getattr(self, attr)
+            if not isinstance(val, str) or not val.strip():
+                raise ValueError(f"{attr} must be a nonempty string")
 
-        # Controlled vocabularies
+        # Controlled enums
         if self.zygosity not in _ALLOWED_ZYGOSITIES:
             raise ValueError(f"Invalid zygosity: {self.zygosity!r}")
         if self.inheritance not in _ALLOWED_INHERITANCE_MODES:
             raise ValueError(f"Invalid inheritance mode: {self.inheritance!r}")
 
-    # -------------------------------------------------------------------------
-    # [P6 SUBSECTION] Convenience properties (mappings & codes)
-    # Why: Defer small lookups to accessors for readability in builders.
-    # -------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+    # Convenience
+    # --------------------------------------------------------------------------
     @property
     def zygosity_code(self) -> str:
-        """Return numeric portion of the GENO allelic_state code for this zygosity."""
+        """
+        Map the human‐readable zygosity to the GENO allelic_state numeric suffix.
+        """
         try:
             return _GENO_ALLELIC_STATE_CODES[self.zygosity]
-        except KeyError:
-            raise ValueError(f"No GENO code defined for zygosity {self.zygosity!r}")
+        except KeyError as exc:
+            raise ValueError(f"No GENO code defined for zygosity {self.zygosity!r}") from exc
 
-    # =============================================================================
-    # [P6 SECTION] VariationDescriptor construction
-    # -----------------------------------------------------------------------------
-    # Why: Provide the exact object that the Phenopacket "variantInterpretation"
-    #       expects (via mapper). Prefers VariantValidator but falls back locally.
-    # =============================================================================
+    # --------------------------------------------------------------------------
+    # Core responsibility: build a VariationDescriptor (VV path or local fallback)
+    # --------------------------------------------------------------------------
     def to_variation_descriptor(self) -> "pps2.VariationDescriptor":
         """
         Build a GA4GH VariationDescriptor for this variant.
 
-        PREFERRED PATH (networked):
-            1) Parse transcript + c. from `hgvsc`.
-            2) Call VariantValidator via pyphetools with (transcript, c_part).
-            3) Convert result to VariationDescriptor.
-        FALLBACK PATH (offline/resilient):
-            - If P6_SKIP_VV=1|true or parsing/remote fails, synthesize a minimal
-              VariationDescriptor locally using the (normalized) g. expression.
-
-        In both paths, we:
-            - attach allelic_state (GENO) from zygosity,
-            - include gene_context.symbol,
-            - add the g. expression as an Expression (value only; syntax HGVS).
-
-        Optional enrichment (P6_ENRICH_GENE_XREFS=1|true):
-            - If available, set gene_context.id to HGNC or ENSEMBL:ENSG…
+        Algorithm
+        ---------
+        1) If P6_SKIP_VV=1 → return a locally constructed descriptor.
+        2) Else try VariantValidator with (transcript, c. part) parsed from hgvsc.
+           On success, adapt & enrich; on VV errors, fall back locally.
         """
-        # ---- feature flag: skip VV entirely
-        if os.getenv("P6_SKIP_VV", "").strip().lower() in {"1", "true"}:
-            return self._build_local_variation_descriptor()
+        # 1) Global opt-out (CI/offline usage)
+        if os.getenv("P6_SKIP_VV", "").strip() in {"1", "true", "TRUE"}:
+            return self._build_local_descriptor()
 
-        # ---- attempt VariantValidator path
-        transcript_id, c_notation = self._parse_hgvsc(self.hgvsc)
-        if not (transcript_id and c_notation):
-            # no transcript+c. → fallback
-            return self._build_local_variation_descriptor()
+        # 2) Try VV using transcript+c. parsed from hgvsc
+        tx, c_part = self._parse_hgvsc(self.hgvsc)
+        if not (tx and c_part):
+            # Can't call VV without a transcript+c. → use local path
+            return self._build_local_descriptor()
 
         try:
-            vv_client = VariantValidator(genome_build="GRCh38", transcript=transcript_id)
-            # pyphetools expects just the "c.*" portion (not "NM_...:c.*")
-            vv_variant = vv_client.encode_hgvs(c_notation)
-            variant_interpretation = vv_variant.to_variant_interpretation_202()
-            variation_descriptor = variant_interpretation.variation_descriptor
+            validator = VariantValidator(genome_build="GRCh38", transcript=tx)
+            hgvs_variant = validator.encode_hgvs(c_part)         # VV call
+            var_interp = hgvs_variant.to_variant_interpretation_202()
+            variation_descriptor = var_interp.variation_descriptor
         except requests.RequestException:
-            # network/HTTP issue → fallback
-            return self._build_local_variation_descriptor()
+            # Network/HTTP hiccup: keep CLI/tests resilient
+            return self._build_local_descriptor()
         except (ValueError, TypeError, KeyError):
-            # schema/flag surprises from VV → fallback
-            return self._build_local_variation_descriptor()
+            # pyphetools raised (e.g., VV returned 'warning' or odd JSON)
+            return self._build_local_descriptor()
 
-        # ---- post-process common fields on the VV-derived descriptor
-        self._attach_common_fields(variation_descriptor)
-
-        # ---- optional enrichment of gene_context.id (HGNC/ENSEMBL) via VV tools
-        if (
-            os.getenv("P6_ENRICH_GENE_XREFS", "").strip().lower() in {"1", "true"}
-            and self.gene_symbol
-            and get_gene_xrefs_vv is not None
-        ):
-            try:
-                xrefs = get_gene_xrefs_vv(
-                    self.gene_symbol,
-                    genome_build="GRCh38",
-                    transcript_set="all",
-                    limit_transcripts="mane",
-                )
-                gene_id_curie = xrefs.get("hgnc_id") or xrefs.get("ensembl_gene")
-                if gene_id_curie:
-                    if gene_id_curie.startswith("ENSG"):
-                        variation_descriptor.gene_context.id = f"ENSEMBL:{gene_id_curie}"
-                    else:
-                        variation_descriptor.gene_context.id = gene_id_curie
-            except VVLookupError:
-                pass  # ignore enrichment hiccups
-            except Exception:
-                pass  # never break the main path
-
-        return variation_descriptor
-
-    # -------------------------------------------------------------------------
-    # [P6 SUBSECTION] Shared post-processing for VariationDescriptor
-    # Why: DRY—attach allelic_state, gene_context.symbol, and g. expression.
-    # -------------------------------------------------------------------------
-    def _attach_common_fields(self, variation_descriptor: "pps2.VariationDescriptor") -> None:
-        """Attach zygosity, gene symbol, and g. expression to the descriptor."""
-        # allelic_state (GENO)
+        # Enrich: allelic state (zygosity)
         if self.zygosity:
             variation_descriptor.allelic_state.id = f"GENO:{self.zygosity_code}"
             variation_descriptor.allelic_state.label = self.zygosity
 
-        # gene_context.symbol (keep benign if field missing in proto)
-        if self.gene_symbol:
-            try:
-                # fill only if absent or empty
-                gene_ctx = getattr(variation_descriptor, "gene_context", None)
-                if gene_ctx is None or not getattr(gene_ctx, "symbol", ""):
-                    variation_descriptor.gene_context.symbol = self.gene_symbol
-            except Exception:
-                pass
+        # Enrich: gene_context symbol (if not already present)
+        try:
+            gene_ctx = getattr(variation_descriptor, "gene_context", None)
+            if self.gene_symbol and (
+                gene_ctx is None or not getattr(gene_ctx, "symbol", "")
+            ):
+                variation_descriptor.gene_context.symbol = self.gene_symbol
+        except AttributeError:
+            # Don't let proto accessors sink the run
+            pass
 
-        # include g. expression we received (normalized; strip 'chr' if present)
-        g_value = self._normalize_hgvs_g(self.hgvsg)
+        # Enrich: ensure we include a normalized genomic HGVS expression
+        g_value = self._normalize_g_expression(self.hgvsg)
         if g_value:
             self._add_hgvs_expression(variation_descriptor, g_value, syntax_name="HGVS")
 
-    # -------------------------------------------------------------------------
-    # [P6 SUBSECTION] Local fallback builder (no VV)
-    # Why: Provide a minimal but valid VariationDescriptor independently of VV.
-    # -------------------------------------------------------------------------
-    def _build_local_variation_descriptor(self) -> "pps2.VariationDescriptor":
-        """Create a minimal VariationDescriptor using our g. string and zygosity."""
-        vd = pps2.VariationDescriptor()
-        self._attach_common_fields(vd)
-        return vd
+        # Optional enrichment: look up HGNC/Ensembl/transcripts via VV (best effort)
+        if (
+            os.getenv("P6_ENRICH_GENE_XREFS", "").strip() in {"1", "true", "TRUE"}
+            and get_gene_xrefs_vv
+            and self.gene_symbol
+        ):
+            try:
+                xrefs = get_gene_xrefs_vv(self.gene_symbol)
+                # Only set IDs if they are currently empty/missing
+                if xrefs.get("hgnc_id") and not getattr(variation_descriptor.gene_context, "id", ""):
+                    variation_descriptor.gene_context.id = xrefs["hgnc_id"]
+                # Future: attach additional identifiers (e.g., Ensembl) to extensions
+            except VVLookupError:
+                # Non-critical enrichment failed; ignore quietly
+                pass
+            except (requests.RequestException, ValueError, KeyError, TypeError):
+                # Never break the main path on enrichment problems.
+                pass
 
-    # -------------------------------------------------------------------------
-    # [P6 SUBSECTION] Small internal helpers (pure functions)
-    # Why: Keep parsing/normalization isolated for easier testing.
-    # -------------------------------------------------------------------------
+        return variation_descriptor
+
+    # --------------------------------------------------------------------------
+    # Internal helpers (focused, testable)
+    # --------------------------------------------------------------------------
     @staticmethod
     def _parse_hgvsc(hgvsc: str) -> Tuple[Optional[str], Optional[str]]:
         """
-        Extract (transcript_id, c_notation) from `hgvsc`.
+        Extract (transcript, c. part) from an hgvsc string.
 
         Examples
         --------
-        "NM_000000.0:c.100A>G"            → ("NM_000000.0", "c.100A>G")
-        "ENST00000205557.12:c.2428G>A"    → ("ENST00000205557.12", "c.2428G>A")
+        "NM_000000.0:c.100A>G"          → ("NM_000000.0", "c.100A>G")
+        "ENST00000205557.12:c.2428G>A"  → ("ENST00000205557.12", "c.2428G>A")
         """
         if not isinstance(hgvsc, str):
             return None, None
-        match = _HGVSC_TXT_RE.match(hgvsc.strip())
-        if not match:
+        m = _HGVSC_TXT_RE.match(hgvsc.strip())
+        if not m:
             return None, None
-        return match.group("tx"), match.group("c")
+        return m.group("tx"), m.group("c")
 
     @staticmethod
-    def _normalize_hgvs_g(hgvsg: str) -> Optional[str]:
+    def _normalize_g_expression(hgvsg: str) -> Optional[str]:
         """
-        Normalize genomic HGVS to a compact form:
-            "chr16:g.100A>G" → "16:g.100A>G" (SNV shape only).
-        Falls back to returning a 'chr'-stripped value or original string.
+        Normalize a genomic HGVS like 'chr16:g.100A>G' → '16:g.100A>G'.
+
+        Handles simple SNVs via regex; otherwise returns the trimmed original.
         """
         if not isinstance(hgvsg, str) or not hgvsg.strip():
             return None
         s = hgvsg.strip()
-        match = _HGVS_G_SNV.match(s)
-        if match:
-            chrom = match.group("chrom")
-            pos = match.group("pos")
-            ref = match.group("ref").upper()
-            alt = match.group("alt").upper()
+        m = _HGVS_G_SNV.match(s)
+        if m:
+            chrom = m.group("chrom")
+            pos = m.group("pos")
+            ref = m.group("ref").upper()
+            alt = m.group("alt").upper()
             return f"{chrom}:g.{pos}{ref}>{alt}"
-        if s.lower().startswith("chr"):
+        if s.lower().startswith("chr"):  # best-effort strip
             return s[3:]
         return s
 
+    def _build_local_descriptor(self) -> "pps2.VariationDescriptor":
+        """
+        Construct a minimal VariationDescriptor locally (VV-free).
+
+        Adds (if available):
+        - normalized genomic HGVS expression (g.)
+        - allelic_state (from zygosity)
+        - gene_context.symbol (from gene_symbol)
+        """
+        vd = pps2.VariationDescriptor()
+
+        # expression: g.
+        g_value = self._normalize_g_expression(self.hgvsg)
+        if g_value:
+            self._add_hgvs_expression(vd, g_value, syntax_name="HGVS")
+
+        # allelic state
+        if self.zygosity:
+            vd.allelic_state.id = f"GENO:{self.zygosity_code}"
+            vd.allelic_state.label = self.zygosity
+
+        # gene symbol (optional)
+        if self.gene_symbol:
+            try:
+                vd.gene_context.symbol = self.gene_symbol
+            except AttributeError:
+                pass
+
+        return vd
+
     @staticmethod
     def _add_hgvs_expression(
-        variation_descriptor: "pps2.VariationDescriptor",
+        vd: "pps2.VariationDescriptor",
         value: str,
         *,
         syntax_name: str = "HGVS",
     ) -> None:
         """
-        Append an Expression(value, syntax) to a VariationDescriptor.
+        Append an Expression (value + syntax) to a VariationDescriptor.
 
-        Parameters
-        ----------
-        variation_descriptor : VariationDescriptor
-            Descriptor to mutate.
-        value : str
-            HGVS string to attach (e.g., "16:g.100A>G").
-        syntax_name : str, optional
-            Enum name to set on `expr.syntax` if available (default: "HGVS").
+        `syntax_name` is looked up defensively because different proto builds
+        expose the enum slightly differently.
         """
-        expr = variation_descriptor.expressions.add()
+        expr = vd.expressions.add()
         expr.value = value
-        # Some proto builds present Expression.HGVS; guard with getattr.
         enum = getattr(type(expr), syntax_name, None)
         if enum is not None and hasattr(expr, "syntax"):
             expr.syntax = enum  # type: ignore[attr-defined]

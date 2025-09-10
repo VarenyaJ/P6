@@ -37,12 +37,13 @@ A simple, extensible CLI for downloading the Human Phenotype Ontology, parsing g
     ```
 
 2.  (Recommended) Create a virtual environment (venv or Conda):
-    # === Simple Venv setup ===
+    ### === Simple Venv setup ===
     ```bash
     python3 -m venv .venv
     source .venv/bin/activate
     ```
-    # === or with Conda ===
+
+    ### === or with Conda ===
     ```bash
     conda env create -f requirements/environment.yml -y
     conda activate P6
@@ -207,3 +208,4 @@ This project is licensed under the AGPL-3.0. See LICENSE for details.
 Varenya Jain
 varenyajj@gmail.com
 GitHub: @VarenyaJ
+
